@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'splash_screen.dart';
-import 'about_page.dart';
 import 'auth_wrapper.dart';
 import 'services/auth_service.dart';
 import 'pages/projects_page.dart';
@@ -45,10 +44,7 @@ class MayoraApp extends StatelessWidget {
           ),
           themeMode: settings.themeMode,
           locale: settings.locale,
-          supportedLocales: const [
-            Locale('en'),
-            Locale('de'),
-          ],
+          supportedLocales: const [Locale('en'), Locale('de')],
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -114,53 +110,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
             Text(widget.title),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AboutPage()),
-              );
-            },
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'signout') {
-                final authService = AuthService();
-                try {
-                  await authService.signOut();
-                  if (context.mounted) {
-                    Navigator.of(
-                      context,
-                    ).pushNamedAndRemoveUntil('/auth', (route) => false);
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Failed to sign out: ${e.toString()}'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'signout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout),
-                    SizedBox(width: 8),
-                    Text('Sign Out'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
       drawer: _buildDrawer(context),
       body: Center(
@@ -329,19 +278,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                     Navigator.pop(context);
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.info),
-                  title: const Text('About'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AboutPage(),
-                      ),
-                    );
-                  },
-                ),
                 const Divider(),
 
                 // Management Section
@@ -370,18 +306,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.business_outlined),
-                  title: const Text('Companies'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Company management coming soon!'),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
                   leading: const Icon(Icons.folder_outlined),
                   title: const Text('Projects'),
                   onTap: () {
@@ -390,18 +314,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const ProjectsPage(),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.assignment_outlined),
-                  title: const Text('Tasks'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Task management coming soon!'),
                       ),
                     );
                   },

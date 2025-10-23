@@ -9,9 +9,7 @@ class SettingsPage extends StatelessWidget {
     final settings = SettingsController.instance;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: AnimatedBuilder(
         animation: settings,
         builder: (context, _) {
