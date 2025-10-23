@@ -9,6 +9,7 @@ import 'pages/users_page.dart';
 import 'pages/invitation_signup_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/locations_page.dart';
+import 'pages/leave_page.dart';
 import 'settings/settings_controller.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -59,6 +60,7 @@ class MayoraApp extends StatelessWidget {
             '/invitation-signup': (context) => const InvitationSignUpPage(),
             '/settings': (context) => const SettingsPage(),
             '/locations': (context) => const LocationsPage(),
+            '/leaves': (context) => const LeavePage(),
           },
         );
       },
@@ -278,6 +280,19 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                   title: const Text('Home'),
                   onTap: () {
                     Navigator.pop(context);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calendar_today),
+                  title: const Text('Leave Requests'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LeavePage(),
+                      ),
+                    );
                   },
                 ),
                 const Divider(),
