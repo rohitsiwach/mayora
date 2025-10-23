@@ -61,6 +61,26 @@ service cloud.firestore {
       // Allow authenticated users to update
       allow update: if request.auth != null;
     }
+    
+    // Location settings - organization-scoped access
+    match /location_settings/{organizationId} {
+      // Allow authenticated users to read their organization's settings
+      allow read: if request.auth != null;
+      
+      // Allow authenticated users to create/update their organization's settings
+      allow create, update: if request.auth != null;
+    }
+    
+    // Work locations - organization-scoped access
+    match /work_locations/{locationId} {
+      // Allow authenticated users to read locations
+      allow read: if request.auth != null;
+      
+      // Allow authenticated users to create/update/delete locations
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
   }
 }
 ```

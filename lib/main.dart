@@ -8,6 +8,7 @@ import 'pages/projects_page.dart';
 import 'pages/users_page.dart';
 import 'pages/invitation_signup_page.dart';
 import 'pages/settings_page.dart';
+import 'pages/locations_page.dart';
 import 'settings/settings_controller.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -57,6 +58,7 @@ class MayoraApp extends StatelessWidget {
             '/splash': (context) => const SplashScreen(),
             '/invitation-signup': (context) => const InvitationSignUpPage(),
             '/settings': (context) => const SettingsPage(),
+            '/locations': (context) => const LocationsPage(),
           },
         );
       },
@@ -314,6 +316,19 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const ProjectsPage(),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.location_on_outlined),
+                  title: const Text('Locations'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LocationsPage(),
                       ),
                     );
                   },
