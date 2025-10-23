@@ -7,20 +7,18 @@ import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:google_places_flutter/model/prediction.dart';
 // Conditional import: on web, use HTML-based map and autocomplete; on mobile, stubs do nothing
 import '../web/web_map_stub.dart'
-  if (dart.library.html) '../web/web_map_web.dart';
+    if (dart.library.html) '../web/web_map_web.dart';
 import '../models/work_location.dart';
 import '../services/location_settings_service.dart';
 
 class LocationPickerPage extends StatefulWidget {
   final String organizationId;
   final WorkLocation? existingLocation;
-  final double defaultRadius;
 
   const LocationPickerPage({
     super.key,
     required this.organizationId,
     this.existingLocation,
-    this.defaultRadius = 10.0,
   });
 
   @override
@@ -46,14 +44,16 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     if (widget.existingLocation != null) {
       _nameController.text = widget.existingLocation!.name;
       _addressController.text = widget.existingLocation!.address;
-      _radiusController.text = widget.existingLocation!.radiusMeters.toInt().toString();
+      _radiusController.text = widget.existingLocation!.radiusMeters
+          .toInt()
+          .toString();
       _selectedLocation = LatLng(
         widget.existingLocation!.latitude,
         widget.existingLocation!.longitude,
       );
       _updateMarker(_selectedLocation);
     } else {
-      _radiusController.text = widget.defaultRadius.toInt().toString();
+      _radiusController.text = '50'; // Default 50 meters
       _updateMarker(_selectedLocation);
     }
   }
@@ -401,7 +401,10 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -436,27 +439,34 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                         debounceTime: 800,
                         countries: const ["de", "at", "ch"],
                         isLatLngRequired: true,
-                        getPlaceDetailWithLatLng: (Prediction prediction) async {
-                          if (prediction.lat != null && prediction.lng != null) {
-                            final latLng = LatLng(
-                              double.parse(prediction.lat!),
-                              double.parse(prediction.lng!),
-                            );
-                            setState(() {
-                              _selectedLocation = latLng;
-                              _addressController.text = prediction.description ?? '';
-                              _updateMarker(latLng);
-                            });
-                            _mapController?.animateCamera(
-                              CameraUpdate.newLatLngZoom(latLng, 15),
-                            );
-                          }
-                        },
+                        getPlaceDetailWithLatLng:
+                            (Prediction prediction) async {
+                              if (prediction.lat != null &&
+                                  prediction.lng != null) {
+                                final latLng = LatLng(
+                                  double.parse(prediction.lat!),
+                                  double.parse(prediction.lng!),
+                                );
+                                setState(() {
+                                  _selectedLocation = latLng;
+                                  _addressController.text =
+                                      prediction.description ?? '';
+                                  _updateMarker(latLng);
+                                });
+                                _mapController?.animateCamera(
+                                  CameraUpdate.newLatLngZoom(latLng, 15),
+                                );
+                              }
+                            },
                         itemClick: (Prediction prediction) {
-                          _addressController.text = prediction.description ?? '';
-                          _addressController.selection = TextSelection.fromPosition(
-                            TextPosition(offset: prediction.description?.length ?? 0),
-                          );
+                          _addressController.text =
+                              prediction.description ?? '';
+                          _addressController.selection =
+                              TextSelection.fromPosition(
+                                TextPosition(
+                                  offset: prediction.description?.length ?? 0,
+                                ),
+                              );
                         },
                         seperatedBuilder: const Divider(height: 1),
                         containerHorizontalPadding: 10,
@@ -465,15 +475,21 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                             padding: const EdgeInsets.all(10),
                             child: Row(
                               children: [
-                                const Icon(Icons.location_on, color: Colors.grey),
+                                const Icon(
+                                  Icons.location_on,
+                                  color: Colors.grey,
+                                ),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         prediction.description ?? '',
-                                        style: const TextStyle(fontWeight: FontWeight.w500),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -497,7 +513,10 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                       ),
                       keyboardType: TextInputType.number,
                     ),
@@ -516,7 +535,11 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.location_on, size: 18, color: Colors.blue.shade700),
+                              Icon(
+                                Icons.location_on,
+                                size: 18,
+                                color: Colors.blue.shade700,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 'Selected Coordinates:',

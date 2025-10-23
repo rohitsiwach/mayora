@@ -24,10 +24,9 @@ class WebMapController {
     if (_marker == null) {
       final gmaps = js_util.getProperty(html.window, 'google');
       final maps = js_util.getProperty(gmaps, 'maps');
-      _marker = js_util.callConstructor(
-        js_util.getProperty(maps, 'Marker'),
-        [js_util.jsify({'position': pos, 'map': _map, 'draggable': true})],
-      );
+      _marker = js_util.callConstructor(js_util.getProperty(maps, 'Marker'), [
+        js_util.jsify({'position': pos, 'map': _map, 'draggable': true}),
+      ]);
       // Drag handler
       js_util.callMethod(_marker, 'addListener', [
         'dragend',
@@ -36,7 +35,9 @@ class WebMapController {
           final newLat = js_util.callMethod(ll, 'lat', []);
           final newLng = js_util.callMethod(ll, 'lng', []);
           if (animate) {
-            js_util.callMethod(_map, 'panTo', [js_util.jsify({'lat': newLat, 'lng': newLng})]);
+            js_util.callMethod(_map, 'panTo', [
+              js_util.jsify({'lat': newLat, 'lng': newLng}),
+            ]);
           }
         }),
       ]);
@@ -77,8 +78,8 @@ class _WebGoogleMapViewState extends State<WebGoogleMapView> {
     super.initState();
     _viewType = 'web-map-${DateTime.now().microsecondsSinceEpoch}';
 
-  // Register a factory that creates a DivElement for the map
-  ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
+    // Register a factory that creates a DivElement for the map
+    ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
       final mapDiv = html.DivElement()
         ..style.width = '100%'
         ..style.height = '100%'
@@ -95,10 +96,17 @@ class _WebGoogleMapViewState extends State<WebGoogleMapView> {
         'mapTypeControl': false,
         'fullscreenControl': false,
       });
-      final map = js_util.callConstructor(js_util.getProperty(maps, 'Map'), [mapDiv, mapOptions]);
+      final map = js_util.callConstructor(js_util.getProperty(maps, 'Map'), [
+        mapDiv,
+        mapOptions,
+      ]);
       _controller._attach(map);
       // Initial marker
-      _controller.setMarker(widget.initialLat, widget.initialLng, animate: false);
+      _controller.setMarker(
+        widget.initialLat,
+        widget.initialLng,
+        animate: false,
+      );
 
       // Click handler to place marker and notify Dart
       if (widget.onMapClick != null) {
@@ -129,7 +137,8 @@ class _WebGoogleMapViewState extends State<WebGoogleMapView> {
 class WebPlacesAutocompleteField extends StatefulWidget {
   final TextEditingController controller;
   final List<String>? countries;
-  final void Function(double lat, double lng, String description)? onPlaceSelected;
+  final void Function(double lat, double lng, String description)?
+  onPlaceSelected;
 
   const WebPlacesAutocompleteField({
     super.key,
@@ -139,10 +148,12 @@ class WebPlacesAutocompleteField extends StatefulWidget {
   });
 
   @override
-  State<WebPlacesAutocompleteField> createState() => _WebPlacesAutocompleteFieldState();
+  State<WebPlacesAutocompleteField> createState() =>
+      _WebPlacesAutocompleteFieldState();
 }
 
-class _WebPlacesAutocompleteFieldState extends State<WebPlacesAutocompleteField> {
+class _WebPlacesAutocompleteFieldState
+    extends State<WebPlacesAutocompleteField> {
   late final String _viewType;
   late final html.InputElement _input;
 
@@ -167,7 +178,8 @@ class _WebPlacesAutocompleteFieldState extends State<WebPlacesAutocompleteField>
         ..style.border = 'none'
         ..style.borderRadius = '0 0 8px 8px'
         ..style.fontSize = '14px'
-        ..style.fontFamily = 'Roboto, -apple-system, BlinkMacSystemFont, sans-serif'
+        ..style.fontFamily =
+            'Roboto, -apple-system, BlinkMacSystemFont, sans-serif'
         ..style.outline = 'none'
         ..style.boxSizing = 'border-box'
         ..style.backgroundColor = 'transparent';
@@ -177,7 +189,7 @@ class _WebPlacesAutocompleteFieldState extends State<WebPlacesAutocompleteField>
         widget.controller.text = _input.value ?? '';
       });
 
-      container.append(_input);      // Initialize Places Autocomplete
+      container.append(_input); // Initialize Places Autocomplete
       final gmaps = js_util.getProperty(html.window, 'google');
       final maps = js_util.getProperty(gmaps, 'maps');
       final placesNs = js_util.getProperty(maps, 'places');
@@ -203,7 +215,9 @@ class _WebPlacesAutocompleteFieldState extends State<WebPlacesAutocompleteField>
             final loc = js_util.getProperty(geometry, 'location');
             final lat = js_util.callMethod(loc, 'lat', []);
             final lng = js_util.callMethod(loc, 'lng', []);
-            final address = (js_util.getProperty(place, 'formatted_address') ?? '').toString();
+            final address =
+                (js_util.getProperty(place, 'formatted_address') ?? '')
+                    .toString();
             widget.controller.text = address;
             widget.onPlaceSelected?.call(lat, lng, address);
           }

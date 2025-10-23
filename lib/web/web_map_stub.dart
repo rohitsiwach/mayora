@@ -30,7 +30,8 @@ class WebGoogleMapView extends StatelessWidget {
 class WebPlacesAutocompleteField extends StatelessWidget {
   final TextEditingController controller;
   final List<String>? countries;
-  final void Function(double lat, double lng, String description)? onPlaceSelected;
+  final void Function(double lat, double lng, String description)?
+  onPlaceSelected;
 
   const WebPlacesAutocompleteField({
     super.key,

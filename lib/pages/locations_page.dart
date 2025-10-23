@@ -34,7 +34,7 @@ class _LocationsPageState extends State<LocationsPage> {
 
     try {
       _organizationId = await _firestoreService.getCurrentUserOrganizationId();
-      
+
       if (_organizationId == null) {
         setState(() {
           _isLoading = false;
@@ -43,9 +43,10 @@ class _LocationsPageState extends State<LocationsPage> {
         return;
       }
 
-      final settings =
-          await _locationService.getLocationSettings(_organizationId!);
-      
+      final settings = await _locationService.getLocationSettings(
+        _organizationId!,
+      );
+
       setState(() {
         _settings = settings;
         _isLoading = false;
@@ -55,7 +56,7 @@ class _LocationsPageState extends State<LocationsPage> {
         _isLoading = false;
         _errorMessage = 'Error loading settings: $e';
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -75,10 +76,9 @@ class _LocationsPageState extends State<LocationsPage> {
     });
 
     try {
-      await _locationService.updateLocationSettings(
-        _organizationId!,
-        {key: value},
-      );
+      await _locationService.updateLocationSettings(_organizationId!, {
+        key: value,
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,10 +145,8 @@ class _LocationsPageState extends State<LocationsPage> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => LocationPickerPage(
-          organizationId: _organizationId!,
-          defaultRadius: _settings['defaultRadiusMeters']?.toDouble() ?? 10.0,
-        ),
+        builder: (context) =>
+            LocationPickerPage(organizationId: _organizationId!),
       ),
     );
 
@@ -171,7 +169,6 @@ class _LocationsPageState extends State<LocationsPage> {
         builder: (context) => LocationPickerPage(
           organizationId: _organizationId!,
           existingLocation: location,
-          defaultRadius: _settings['defaultRadiusMeters']?.toDouble() ?? 10.0,
         ),
       ),
     );
@@ -196,46 +193,42 @@ class _LocationsPageState extends State<LocationsPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          size: 64,
-                          color: Colors.red[300],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _loadSettings,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
-                        ),
-                      ],
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16),
                     ),
-                  ),
-                )
-              : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      // Location Settings Section
-                      _buildLocationSettings(),
-
-                      const SizedBox(height: 16),
-
-                      // Work Locations Section
-                      _buildWorkLocations(),
-                    ],
-                  ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _loadSettings,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
                 ),
+              ),
+            )
+          : SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Location Settings Section
+                  _buildLocationSettings(),
+
+                  const SizedBox(height: 16),
+
+                  // Work Locations Section
+                  _buildWorkLocations(),
+                ],
+              ),
+            ),
     );
   }
 
@@ -255,40 +248,43 @@ class _LocationsPageState extends State<LocationsPage> {
                 const SizedBox(width: 8),
                 const Text(
                   'Location Settings',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             const SizedBox(height: 16),
             _buildSettingRow(
               'Location Tracking',
+              'Track employee locations during work hours',
               _settings['locationTrackingEnabled'] ?? true,
               (value) => _updateSetting('locationTrackingEnabled', value),
             ),
             const Divider(height: 1),
             _buildSettingRow(
               'Require Location for Punch',
+              'Employees must enable location services to clock in/out',
               _settings['requireLocationForPunch'] ?? false,
               (value) => _updateSetting('requireLocationForPunch', value),
             ),
             const Divider(height: 1),
             _buildSettingRow(
               'Allow Punch Outside Location',
+              'Allow employees to clock in/out from anywhere, not just work locations',
               _settings['allowPunchOutsideLocation'] ?? true,
               (value) => _updateSetting('allowPunchOutsideLocation', value),
             ),
-            const Divider(height: 1),
-            _buildRadiusSetting(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSettingRow(String title, bool value, Function(bool) onChanged) {
+  Widget _buildSettingRow(
+    String title,
+    String description,
+    bool value,
+    Function(bool) onChanged,
+  ) {
     Color statusColor = value ? Colors.green : Colors.grey;
     String statusText = value ? 'Enabled' : 'No';
 
@@ -301,11 +297,28 @@ class _LocationsPageState extends State<LocationsPage> {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 12),
           Row(
             children: [
               Text(
@@ -323,31 +336,6 @@ class _LocationsPageState extends State<LocationsPage> {
                 activeColor: const Color(0xFF2962FF),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRadiusSetting() {
-    final radius = _settings['defaultRadiusMeters']?.toDouble() ?? 10.0;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Default Radius',
-            style: TextStyle(fontSize: 15),
-          ),
-          Text(
-            '${radius.toInt()} meters',
-            style: const TextStyle(
-              color: Color(0xFF2962FF),
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-            ),
           ),
         ],
       ),
@@ -455,26 +443,17 @@ class _LocationsPageState extends State<LocationsPage> {
       ),
       title: Text(
         location.name,
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 16,
-        ),
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 4),
-          Text(
-            location.address,
-            style: const TextStyle(fontSize: 13),
-          ),
+          Text(location.address, style: const TextStyle(fontSize: 13)),
           const SizedBox(height: 2),
           Text(
             'Radius: ${location.radiusMeters.toInt()}m',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
         ],
       ),

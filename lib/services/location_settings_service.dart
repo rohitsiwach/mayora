@@ -10,7 +10,8 @@ class LocationSettingsService {
 
   /// Get location settings for an organization
   Future<Map<String, dynamic>> getLocationSettings(
-      String organizationId) async {
+    String organizationId,
+  ) async {
     try {
       final doc = await _firestore
           .collection(_settingsCollection)
@@ -33,16 +34,10 @@ class LocationSettingsService {
     Map<String, dynamic> settings,
   ) async {
     try {
-      await _firestore
-          .collection(_settingsCollection)
-          .doc(organizationId)
-          .set(
-        {
-          ...settings,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      await _firestore.collection(_settingsCollection).doc(organizationId).set({
+        ...settings,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     } catch (e) {
       print('Error updating location settings: $e');
       rethrow;
@@ -56,16 +51,16 @@ class LocationSettingsService {
         .where('organizationId', isEqualTo: organizationId)
         .snapshots()
         .map((snapshot) {
-      // Sort locations by name in-memory instead of using Firestore orderBy
-      final locations = snapshot.docs
-          .map((doc) => WorkLocation.fromMap(doc.data(), doc.id))
-          .toList();
-      
-      // Sort by name alphabetically
-      locations.sort((a, b) => a.name.compareTo(b.name));
-      
-      return locations;
-    });
+          // Sort locations by name in-memory instead of using Firestore orderBy
+          final locations = snapshot.docs
+              .map((doc) => WorkLocation.fromMap(doc.data(), doc.id))
+              .toList();
+
+          // Sort by name alphabetically
+          locations.sort((a, b) => a.name.compareTo(b.name));
+
+          return locations;
+        });
   }
 
   /// Add a new work location
@@ -90,10 +85,9 @@ class LocationSettingsService {
     }
 
     try {
-      await _firestore.collection(_locationsCollection).doc(location.id).update({
-        ...location.toMap(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _firestore.collection(_locationsCollection).doc(location.id).update(
+        {...location.toMap(), 'updatedAt': FieldValue.serverTimestamp()},
+      );
     } catch (e) {
       print('Error updating work location: $e');
       rethrow;
@@ -103,7 +97,10 @@ class LocationSettingsService {
   /// Delete a work location
   Future<void> deleteWorkLocation(String locationId) async {
     try {
-      await _firestore.collection(_locationsCollection).doc(locationId).delete();
+      await _firestore
+          .collection(_locationsCollection)
+          .doc(locationId)
+          .delete();
     } catch (e) {
       print('Error deleting work location: $e');
       rethrow;
