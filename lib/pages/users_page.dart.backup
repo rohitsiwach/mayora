@@ -1,0 +1,2501 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firestore_service.dart';
+
+class UsersPage extends StatefulWidget {
+  const UsersPage({super.key});
+
+  @override
+  State<UsersPage> createState() => _UsersPageState();
+}
+
+class _UsersPageState extends State<UsersPage>
+    with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('User Management'),
+        backgroundColor: const Color(0xFF673AB7),
+        foregroundColor: Colors.white,
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          tabs: const [
+            Tab(icon: Icon(Icons.people), text: 'Users'),
+            Tab(icon: Icon(Icons.mail_outline), text: 'Invitations'),
+            Tab(icon: Icon(Icons.group), text: 'User Groups'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // Users Tab - Registered/Accepted Users
+          _buildUsersTab(),
+          // Invitations Tab - Pending Invitations
+          _buildInvitationsTab(),
+          // User Groups Tab
+          _buildUserGroupsTab(),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showInviteUserDialog(context),
+        backgroundColor: const Color(0xFF673AB7),
+        icon: const Icon(Icons.person_add, color: Colors.white),
+        label: const Text('Invite User', style: TextStyle(color: Colors.white)),
+      ),
+    );
+  }
+
+  // Users Tab - Shows accepted/registered users
+  Widget _buildUsersTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestoreService.getRegisteredUsers(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildErrorState('Error loading users', snapshot.error);
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF673AB7)),
+          );
+        }
+
+        final users = snapshot.data?.docs ?? [];
+
+        if (users.isEmpty) {
+          return _buildEmptyState(
+            icon: Icons.people_outlined,
+            title: 'No registered users yet',
+            subtitle: 'Users will appear here once they accept invitations',
+          );
+        }
+
+        return _buildUsersList(users, isInvitation: false);
+      },
+    );
+  }
+
+  // Invitations Tab - Shows pending invitations
+  Widget _buildInvitationsTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestoreService.getUserInvitations(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildErrorState('Error loading invitations', snapshot.error);
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF673AB7)),
+          );
+        }
+
+        final invitations = snapshot.data?.docs ?? [];
+
+        if (invitations.isEmpty) {
+          return _buildEmptyState(
+            icon: Icons.mail_outline,
+            title: 'No pending invitations',
+            subtitle: 'Tap the + button to invite team members',
+          );
+        }
+
+        return _buildUsersList(invitations, isInvitation: true);
+      },
+    );
+  }
+
+  // User Groups Tab
+  Widget _buildUserGroupsTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestoreService.getUserGroups(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildErrorState('Error loading user groups', snapshot.error);
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF673AB7)),
+          );
+        }
+
+        final groups = snapshot.data?.docs ?? [];
+
+        return Column(
+          children: [
+            Expanded(
+              child: groups.isEmpty
+                  ? _buildEmptyState(
+                      icon: Icons.group_outlined,
+                      title: 'No user groups yet',
+                      subtitle: 'Create groups to organize your team members',
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: groups.length,
+                      itemBuilder: (context, index) {
+                        final group = groups[index];
+                        final groupData = group.data() as Map<String, dynamic>;
+                        final groupName = groupData['name'] ?? 'Unnamed Group';
+                        final description = groupData['description'] ?? '';
+                        final members =
+                            List<String>.from(groupData['members'] ?? []);
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
+                            leading: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF673AB7).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.group,
+                                color: Color(0xFF673AB7),
+                                size: 24,
+                              ),
+                            ),
+                            title: Text(
+                              groupName,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (description.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    description,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.people,
+                                      size: 16,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${members.length} ${members.length == 1 ? 'member' : 'members'}',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert),
+                              onSelected: (value) {
+                                if (value == 'view') {
+                                  _showGroupDetailsDialog(group.id, groupData);
+                                } else if (value == 'edit') {
+                                  _showEditGroupDialog(group.id, groupData);
+                                } else if (value == 'delete') {
+                                  _confirmDeleteGroup(group.id, groupName);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'view',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.visibility, size: 20),
+                                      SizedBox(width: 8),
+                                      Text('View Details'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit, size: 20),
+                                      SizedBox(width: 8),
+                                      Text('Edit'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete,
+                                          size: 20, color: Colors.red),
+                                      SizedBox(width: 8),
+                                      Text('Delete',
+                                          style: TextStyle(color: Colors.red)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            onTap: () =>
+                                _showGroupDetailsDialog(group.id, groupData),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            // Create Group Button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _showCreateGroupDialog,
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text(
+                    'Create New Group',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF673AB7),
+                    padding: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildErrorState(String title, Object? error) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 60, color: Colors.red.shade300),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: TextStyle(fontSize: 18, color: Colors.grey.shade700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _firestoreService.getErrorMessage(error),
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () => setState(() {}),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF673AB7),
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 80, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsersList(
+    List<QueryDocumentSnapshot> users, {
+    required bool isInvitation,
+  }) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: users.length,
+      itemBuilder: (context, index) {
+        final doc = users[index];
+        final user = doc.data() as Map<String, dynamic>;
+        final userId = doc.id;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            leading: CircleAvatar(
+              radius: 28,
+              backgroundColor: _getAccessLevelColor(
+                user['accessLevel'] ?? user['role'] ?? 'User',
+              ),
+              child: Text(
+                (user['name'] ?? 'User').substring(0, 1).toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            title: Text(
+              user['name'] ?? 'Unknown',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Text(
+                  user['email'] ?? '',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildChip(
+                      user['accessLevel'] ?? user['role'] ?? 'User',
+                      _getAccessLevelColor(
+                        user['accessLevel'] ?? user['role'] ?? 'User',
+                      ),
+                    ),
+                    if (user['department'] != null)
+                      _buildChip(user['department'], Colors.blue),
+                    if (user['position'] != null)
+                      _buildChip(user['position'], Colors.orange),
+                    // Show status badge for invitations
+                    if (isInvitation)
+                      _buildChip(
+                        user['status'] ?? 'Pending',
+                        _getStatusColor(user['status'] ?? 'Pending'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Show invitation code for pending invitations
+                if (isInvitation && user['invitationCode'] != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.purple.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.key,
+                          size: 16,
+                          color: Colors.purple.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Code: ${user['invitationCode']}',
+                          style: TextStyle(
+                            color: Colors.purple.shade700,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // Show expiry for invitations
+                if (isInvitation && user['expiryDate'] != null) ...[
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.schedule,
+                        size: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Expires: ${_formatDate((user['expiryDate'] as Timestamp).toDate())}',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                Row(
+                  children: [
+                    Icon(Icons.payment, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Text(
+                      _getPaymentDisplay(user),
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Icon(Icons.event, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Hired: ${user['hireDate']}',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.beach_access,
+                      size: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${user['yearlyVacations']} vacation days/year',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            trailing: PopupMenuButton(
+              icon: const Icon(Icons.more_vert),
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, size: 20),
+                      SizedBox(width: 8),
+                      Text('Edit'),
+                    ],
+                  ),
+                ),
+                // Only show resend for invitations
+                if (isInvitation)
+                  const PopupMenuItem(
+                    value: 'resend',
+                    child: Row(
+                      children: [
+                        Icon(Icons.email, size: 20),
+                        SizedBox(width: 8),
+                        Text('Resend Invitation'),
+                      ],
+                    ),
+                  ),
+                const PopupMenuItem(
+                  value: 'deactivate',
+                  child: Row(
+                    children: [
+                      Icon(Icons.block, size: 20, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text(
+                        'Deactivate',
+                        style: TextStyle(color: Colors.orange),
+                      ),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 20, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Delete', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+              onSelected: (value) {
+                if (value == 'delete') {
+                  _deleteUser(userId, user['name']);
+                } else if (value == 'edit') {
+                  _showEditUserDialog(context, userId, user);
+                } else if (value == 'resend') {
+                  _resendInvitation(userId, user['email']);
+                } else if (value == 'deactivate') {
+                  _deactivateUser(userId, user['name']);
+                }
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Color _getAccessLevelColor(String accessLevel) {
+    switch (accessLevel) {
+      case 'Admin':
+        return Colors.red;
+      case 'Manager':
+        return Colors.purple;
+      case 'Manager Read Only':
+        return Colors.blue;
+      case 'Employee':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Pending':
+        return Colors.orange;
+      case 'Active':
+        return Colors.green;
+      case 'Accepted':
+        return Colors.blue;
+      case 'Deactivated':
+        return Colors.red;
+      case 'Expired':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  String _getPaymentDisplay(Map<String, dynamic> user) {
+    if (user['paymentType'] == 'Monthly') {
+      return 'Monthly: \$${user['monthlyIncome']}';
+    } else {
+      return 'Hourly: \$${user['hourlyRate']}/hr';
+    }
+  }
+
+  void _showInviteUserDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => UserInvitationDialog(
+        firestoreService: _firestoreService,
+        onInvite: (userData) async {
+          // Firestore service will handle saving
+        },
+      ),
+    );
+  }
+
+  void _showEditUserDialog(
+    BuildContext context,
+    String userId,
+    Map<String, dynamic> userData,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => UserInvitationDialog(
+        firestoreService: _firestoreService,
+        userId: userId,
+        userData: userData,
+        onInvite: (updatedData) async {
+          // Firestore service will handle updating
+        },
+      ),
+    );
+  }
+
+  void _resendInvitation(String userId, String email) async {
+    try {
+      await _firestoreService.resendInvitation(userId);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invitation resent to $email'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_firestoreService.getErrorMessage(e)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _deactivateUser(String userId, String userName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Deactivate User'),
+        content: Text('Are you sure you want to deactivate "$userName"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await _firestoreService.deactivateUser(userId);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('User deactivated successfully'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_firestoreService.getErrorMessage(e)),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Deactivate'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteUser(String userId, String userName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete User'),
+        content: Text('Are you sure you want to delete "$userName"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await _firestoreService.deleteUserInvitation(userId);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('User deleted successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_firestoreService.getErrorMessage(e)),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // User Groups Dialog Methods
+  Future<void> _showCreateGroupDialog() async {
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create User Group'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a group name')),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF673AB7),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && nameController.text.trim().isNotEmpty) {
+      try {
+        await _firestoreService.createUserGroup({
+          'name': nameController.text.trim(),
+          'description': descriptionController.text.trim(),
+          'members': [],
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User group created successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error creating group: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showEditGroupDialog(
+      String groupId, Map<String, dynamic> groupData) async {
+    final nameController =
+        TextEditingController(text: groupData['name'] ?? '');
+    final descriptionController =
+        TextEditingController(text: groupData['description'] ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit User Group'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a group name')),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF673AB7),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && nameController.text.trim().isNotEmpty) {
+      try {
+        await _firestoreService.updateUserGroup(groupId, {
+          'name': nameController.text.trim(),
+          'description': descriptionController.text.trim(),
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User group updated successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating group: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteGroup(String groupId, String groupName) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete User Group'),
+        content: Text(
+            'Are you sure you want to delete "$groupName"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      try {
+        await _firestoreService.deleteUserGroup(groupId);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User group deleted successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting group: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showGroupDetailsDialog(
+      String groupId, Map<String, dynamic> groupData) async {
+    final members = List<String>.from(groupData['members'] ?? []);
+
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          width: 600,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF673AB7).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.group,
+                      color: Color(0xFF673AB7),
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          groupData['name'] ?? 'Unnamed Group',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if ((groupData['description'] ?? '').isNotEmpty)
+                          Text(
+                            groupData['description'],
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Members (${members.length})',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showAddMembersDialog(groupId, members);
+                    },
+                    icon: const Icon(Icons.person_add, size: 18),
+                    label: const Text('Add Members'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF673AB7),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: members.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.people_outline,
+                                size: 64,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No members yet',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Add members to this group',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : StreamBuilder<QuerySnapshot>(
+                        stream: _firestoreService.getRegisteredUsers(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+
+                          final allUsers = snapshot.data!.docs;
+                          final memberUsers = allUsers
+                              .where((user) => members.contains(user.id))
+                              .toList();
+
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: memberUsers.length,
+                            itemBuilder: (context, index) {
+                              final user = memberUsers[index];
+                              final userData =
+                                  user.data() as Map<String, dynamic>;
+
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: const Color(0xFF673AB7),
+                                  child: Text(
+                                    (userData['name'] ?? 'U')[0].toUpperCase(),
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                title: Text(userData['name'] ?? 'Unknown'),
+                                subtitle: Text(userData['email'] ?? ''),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline,
+                                      color: Colors.red),
+                                  onPressed: () async {
+                                    try {
+                                      await _firestoreService
+                                          .removeUserFromGroup(
+                                              groupId, user.id);
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'Member removed from group')),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content: Text(
+                                                  'Error removing member: $e')),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAddMembersDialog(
+      String groupId, List<String> currentMembers) async {
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          width: 500,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Add Members',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              const Text(
+                'Select users to add to this group:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _firestoreService.getRegisteredUsers(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final allUsers = snapshot.data!.docs;
+                    final availableUsers = allUsers
+                        .where((user) => !currentMembers.contains(user.id))
+                        .toList();
+
+                    if (availableUsers.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            'All users are already in this group',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: availableUsers.length,
+                      itemBuilder: (context, index) {
+                        final user = availableUsers[index];
+                        final userData = user.data() as Map<String, dynamic>;
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFF673AB7),
+                            child: Text(
+                              (userData['name'] ?? 'U')[0].toUpperCase(),
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          title: Text(userData['name'] ?? 'Unknown'),
+                          subtitle: Text(userData['email'] ?? ''),
+                          trailing: ElevatedButton.icon(
+                            onPressed: () async {
+                              try {
+                                await _firestoreService.addUserToGroup(
+                                    groupId, user.id);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text('Member added to group')),
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text('Error adding member: $e')),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF673AB7),
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class UserInvitationDialog extends StatefulWidget {
+  final FirestoreService firestoreService;
+  final String? userId;
+  final Map<String, dynamic>? userData;
+  final Function(Map<String, dynamic>) onInvite;
+
+  const UserInvitationDialog({
+    super.key,
+    required this.firestoreService,
+    this.userId,
+    this.userData,
+    required this.onInvite,
+  });
+
+  @override
+  State<UserInvitationDialog> createState() => _UserInvitationDialogState();
+}
+
+class _UserInvitationDialogState extends State<UserInvitationDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _departmentController = TextEditingController();
+  final _positionController = TextEditingController();
+  final _hourlyRateController = TextEditingController();
+  final _monthlyIncomeController = TextEditingController();
+  final _yearlyVacationsController = TextEditingController();
+
+  String _accessLevel = 'Employee';
+  String _paymentType = 'Monthly';
+  DateTime _hireDate = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.userData != null) {
+      _nameController.text = widget.userData!['name'] ?? '';
+      _emailController.text = widget.userData!['email'] ?? '';
+      _accessLevel = widget.userData!['accessLevel'] ?? 'Employee';
+      _departmentController.text = widget.userData!['department'] ?? '';
+      _positionController.text = widget.userData!['position'] ?? '';
+      _paymentType = widget.userData!['paymentType'] ?? 'Monthly';
+      _hourlyRateController.text =
+          widget.userData!['hourlyRate']?.toString() ?? '';
+      _monthlyIncomeController.text =
+          widget.userData!['monthlyIncome']?.toString() ?? '';
+      _yearlyVacationsController.text =
+          widget.userData!['yearlyVacations']?.toString() ?? '';
+      if (widget.userData!['hireDate'] != null) {
+        _hireDate = DateTime.parse(widget.userData!['hireDate']);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _departmentController.dispose();
+    _positionController.dispose();
+    _hourlyRateController.dispose();
+    _monthlyIncomeController.dispose();
+    _yearlyVacationsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF673AB7), Color(0xFF9C27B0)],
+                ),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.person_add, color: Colors.white, size: 28),
+                  const SizedBox(width: 12),
+                  Text(
+                    widget.userData == null ? 'Invite User' : 'Edit User',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            // Form
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Name
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Full Name *',
+                          prefixIcon: const Icon(Icons.person),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Email
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'Email Address *',
+                          prefixIcon: const Icon(Icons.email),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          helperText: 'Invitation will be sent to this email',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter email';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Please enter a valid email';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Access Level
+                      DropdownButtonFormField<String>(
+                        value: _accessLevel,
+                        decoration: InputDecoration(
+                          labelText: 'Access Level *',
+                          prefixIcon: const Icon(Icons.admin_panel_settings),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Admin',
+                            child: Text('Admin'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Manager',
+                            child: Text('Manager'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Manager Read Only',
+                            child: Text('Manager Read Only'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Employee',
+                            child: Text('Employee'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _accessLevel = value!;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Department
+                      TextFormField(
+                        controller: _departmentController,
+                        decoration: InputDecoration(
+                          labelText: 'Department *',
+                          prefixIcon: const Icon(Icons.business_center),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          helperText: 'e.g., Engineering, Sales, HR',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter department';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Position
+                      TextFormField(
+                        controller: _positionController,
+                        decoration: InputDecoration(
+                          labelText: 'Position *',
+                          prefixIcon: const Icon(Icons.work),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          helperText: 'e.g., Senior Developer, Sales Manager',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter position';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Payment Type
+                      DropdownButtonFormField<String>(
+                        value: _paymentType,
+                        decoration: InputDecoration(
+                          labelText: 'Payment Type *',
+                          prefixIcon: const Icon(Icons.payment),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Monthly',
+                            child: Text('Paid Monthly'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Hourly',
+                            child: Text('Paid Hourly'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _paymentType = value!;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Monthly Income (conditional)
+                      if (_paymentType == 'Monthly')
+                        TextFormField(
+                          controller: _monthlyIncomeController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Monthly Income (\$) *',
+                            prefixIcon: const Icon(Icons.attach_money),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (_paymentType == 'Monthly' &&
+                                (value == null || value.trim().isEmpty)) {
+                              return 'Please enter monthly income';
+                            }
+                            if (_paymentType == 'Monthly' &&
+                                value != null &&
+                                value.isNotEmpty &&
+                                double.tryParse(value) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                        ),
+
+                      // Hourly Rate (conditional)
+                      if (_paymentType == 'Hourly')
+                        TextFormField(
+                          controller: _hourlyRateController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Hourly Rate (\$) *',
+                            prefixIcon: const Icon(Icons.attach_money),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (_paymentType == 'Hourly' &&
+                                (value == null || value.trim().isEmpty)) {
+                              return 'Please enter hourly rate';
+                            }
+                            if (_paymentType == 'Hourly' &&
+                                value != null &&
+                                value.isNotEmpty &&
+                                double.tryParse(value) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                        ),
+                      const SizedBox(height: 16),
+
+                      // Hire Date
+                      InkWell(
+                        onTap: () => _selectHireDate(context),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Hire Date *',
+                            prefixIcon: const Icon(Icons.calendar_today),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            '${_hireDate.day}/${_hireDate.month}/${_hireDate.year}',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Yearly Vacations
+                      TextFormField(
+                        controller: _yearlyVacationsController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: InputDecoration(
+                          labelText: 'Yearly Vacation Days *',
+                          prefixIcon: const Icon(Icons.beach_access),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          helperText: 'Number of paid vacation days per year',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter vacation days';
+                          }
+                          if (int.tryParse(value) == null) {
+                            return 'Please enter a valid number';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Action Buttons
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _sendInvitation,
+                    icon: const Icon(Icons.send, size: 18),
+                    label: Text(
+                      widget.userData == null
+                          ? 'Send Invitation'
+                          : 'Update User',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF673AB7),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectHireDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _hireDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF673AB7),
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _hireDate) {
+      setState(() {
+        _hireDate = picked;
+      });
+    }
+  }
+
+  void _sendInvitation() async {
+    if (_formKey.currentState!.validate()) {
+      final userData = {
+        'name': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'accessLevel': _accessLevel,
+        'department': _departmentController.text.trim(),
+        'position': _positionController.text.trim(),
+        'paymentType': _paymentType,
+        'monthlyIncome':
+            _paymentType == 'Monthly' &&
+                _monthlyIncomeController.text.isNotEmpty
+            ? double.parse(_monthlyIncomeController.text)
+            : null,
+        'hourlyRate':
+            _paymentType == 'Hourly' && _hourlyRateController.text.isNotEmpty
+            ? double.parse(_hourlyRateController.text)
+            : null,
+        'hireDate': _hireDate.toIso8601String().split('T')[0],
+        'yearlyVacations': int.parse(_yearlyVacationsController.text),
+      };
+
+      try {
+        if (widget.userId == null) {
+          // Send new invitation
+          final invitationId = await widget.firestoreService.sendUserInvitation(
+            userData,
+          );
+
+          // Call the callback to refresh the list
+          widget.onInvite(userData);
+
+          if (invitationId != null && context.mounted) {
+            // Retrieve the invitation data to get the code
+            final invitationData = await widget.firestoreService
+                .getInvitationById(invitationId);
+
+            if (invitationData != null && context.mounted) {
+              final invitationCode = invitationData['invitationCode'] as String;
+
+              // Close the form dialog first
+              Navigator.pop(context);
+
+              // Wait a bit for the dialog to close
+              await Future.delayed(const Duration(milliseconds: 300));
+
+              // Show the invitation code dialog
+              if (context.mounted) {
+                _showInvitationCodeDialog(
+                  context,
+                  invitationCode,
+                  _emailController.text,
+                );
+              }
+            }
+          }
+        } else {
+          // Update existing invitation
+          await widget.firestoreService.updateUserInvitation(
+            widget.userId!,
+            userData,
+          );
+
+          // Call the callback to refresh the list
+          widget.onInvite(userData);
+
+          if (context.mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('User updated successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(widget.firestoreService.getErrorMessage(e)),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  void _showInvitationCodeDialog(
+    BuildContext context,
+    String invitationCode,
+    String email,
+  ) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green.shade600),
+            const SizedBox(width: 8),
+            const Text('Invitation Sent!'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Invitation sent to $email',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Invitation Code:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.purple.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.purple.shade200, width: 2),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    invitationCode,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: invitationCode));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Invitation code copied to clipboard'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    tooltip: 'Copy to clipboard',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.blue.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'How to accept:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '1. Share this code with the invitee\n'
+                    '2. They should open the Sign Up page\n'
+                    '3. Click "Sign up with Invitation Code"\n'
+                    '4. Enter this code to complete registration',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber,
+                    size: 16,
+                    color: Colors.orange.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'This invitation expires in 14 days',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // User Groups Dialog Methods
+  Future<void> _showCreateGroupDialog() async {
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create User Group'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a group name')),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF673AB7),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && nameController.text.trim().isNotEmpty) {
+      try {
+        await _firestoreService.createUserGroup({
+          'name': nameController.text.trim(),
+          'description': descriptionController.text.trim(),
+          'members': [],
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User group created successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error creating group: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showEditGroupDialog(
+      String groupId, Map<String, dynamic> groupData) async {
+    final nameController =
+        TextEditingController(text: groupData['name'] ?? '');
+    final descriptionController =
+        TextEditingController(text: groupData['description'] ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit User Group'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a group name')),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF673AB7),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && nameController.text.trim().isNotEmpty) {
+      try {
+        await _firestoreService.updateUserGroup(groupId, {
+          'name': nameController.text.trim(),
+          'description': descriptionController.text.trim(),
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User group updated successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating group: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteGroup(String groupId, String groupName) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete User Group'),
+        content: Text(
+            'Are you sure you want to delete "$groupName"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      try {
+        await _firestoreService.deleteUserGroup(groupId);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User group deleted successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting group: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showGroupDetailsDialog(
+      String groupId, Map<String, dynamic> groupData) async {
+    final members = List<String>.from(groupData['members'] ?? []);
+
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          width: 600,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF673AB7).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.group,
+                      color: Color(0xFF673AB7),
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          groupData['name'] ?? 'Unnamed Group',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if ((groupData['description'] ?? '').isNotEmpty)
+                          Text(
+                            groupData['description'],
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Members (${members.length})',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showAddMembersDialog(groupId, members);
+                    },
+                    icon: const Icon(Icons.person_add, size: 18),
+                    label: const Text('Add Members'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF673AB7),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: members.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.people_outline,
+                                size: 64,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No members yet',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Add members to this group',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : StreamBuilder<QuerySnapshot>(
+                        stream: _firestoreService.getRegisteredUsers(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+
+                          final allUsers = snapshot.data!.docs;
+                          final memberUsers = allUsers
+                              .where((user) => members.contains(user.id))
+                              .toList();
+
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: memberUsers.length,
+                            itemBuilder: (context, index) {
+                              final user = memberUsers[index];
+                              final userData =
+                                  user.data() as Map<String, dynamic>;
+
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: const Color(0xFF673AB7),
+                                  child: Text(
+                                    (userData['name'] ?? 'U')[0].toUpperCase(),
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                title: Text(userData['name'] ?? 'Unknown'),
+                                subtitle: Text(userData['email'] ?? ''),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline,
+                                      color: Colors.red),
+                                  onPressed: () async {
+                                    try {
+                                      await _firestoreService
+                                          .removeUserFromGroup(
+                                              groupId, user.id);
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'Member removed from group')),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content: Text(
+                                                  'Error removing member: $e')),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAddMembersDialog(
+      String groupId, List<String> currentMembers) async {
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          width: 500,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Add Members',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              const Text(
+                'Select users to add to this group:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _firestoreService.getRegisteredUsers(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final allUsers = snapshot.data!.docs;
+                    final availableUsers = allUsers
+                        .where((user) => !currentMembers.contains(user.id))
+                        .toList();
+
+                    if (availableUsers.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            'All users are already in this group',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: availableUsers.length,
+                      itemBuilder: (context, index) {
+                        final user = availableUsers[index];
+                        final userData = user.data() as Map<String, dynamic>;
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFF673AB7),
+                            child: Text(
+                              (userData['name'] ?? 'U')[0].toUpperCase(),
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          title: Text(userData['name'] ?? 'Unknown'),
+                          subtitle: Text(userData['email'] ?? ''),
+                          trailing: ElevatedButton.icon(
+                            onPressed: () async {
+                              try {
+                                await _firestoreService.addUserToGroup(
+                                    groupId, user.id);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text('Member added to group')),
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text('Error adding member: $e')),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF673AB7),
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
