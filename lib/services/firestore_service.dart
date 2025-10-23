@@ -18,15 +18,14 @@ class FirestoreService {
     if (_currentUserId == null) return null;
 
     try {
-      final querySnapshot = await _firestore
+      // Access user document directly by document ID (which is the user's auth UID)
+      final userDoc = await _firestore
           .collection('users')
-          .where('userId', isEqualTo: _currentUserId)
-          .limit(1)
+          .doc(_currentUserId)
           .get();
 
-      if (querySnapshot.docs.isNotEmpty) {
-        _cachedOrganizationId =
-            querySnapshot.docs.first.data()['organizationId'] as String?;
+      if (userDoc.exists) {
+        _cachedOrganizationId = userDoc.data()?['organizationId'] as String?;
         return _cachedOrganizationId;
       }
       return null;

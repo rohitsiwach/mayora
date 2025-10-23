@@ -14,11 +14,17 @@ class _UsersPageState extends State<UsersPage>
     with SingleTickerProviderStateMixin {
   final FirestoreService _firestoreService = FirestoreService();
   late TabController _tabController;
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      setState(() {
+        _currentTabIndex = _tabController.index;
+      });
+    });
   }
 
   @override
@@ -54,13 +60,32 @@ class _UsersPageState extends State<UsersPage>
           _buildUserGroupsTab(),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: _buildFloatingActionButton(),
+    );
+  }
+
+  Widget _buildFloatingActionButton() {
+    // Tab 0: Users, Tab 1: Invitations, Tab 2: User Groups
+    if (_currentTabIndex == 2) {
+      // User Groups tab - Create Group button
+      return FloatingActionButton.extended(
+        onPressed: _showCreateGroupDialog,
+        backgroundColor: const Color(0xFF673AB7),
+        icon: const Icon(Icons.group_add, color: Colors.white),
+        label: const Text(
+          'Create Group',
+          style: TextStyle(color: Colors.white),
+        ),
+      );
+    } else {
+      // Users and Invitations tabs - Invite User button
+      return FloatingActionButton.extended(
         onPressed: () => _showInviteUserDialog(context),
         backgroundColor: const Color(0xFF673AB7),
         icon: const Icon(Icons.person_add, color: Colors.white),
         label: const Text('Invite User', style: TextStyle(color: Colors.white)),
-      ),
-    );
+      );
+    }
   }
 
   Widget _buildUsersTab() {
@@ -279,27 +304,6 @@ class _UsersPageState extends State<UsersPage>
                         );
                       },
                     ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _showCreateGroupDialog,
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text(
-                    'Create New Group',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF673AB7),
-                    padding: const EdgeInsets.all(16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
             ),
           ],
         );
@@ -682,54 +686,127 @@ class _UsersPageState extends State<UsersPage>
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
 
+    // Fetch available users
+    final usersSnapshot = await _firestoreService.getRegisteredUsers().first;
+    final users = usersSnapshot.docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return {
+        'id': doc.id,
+        'name': data['name'] ?? 'Unknown',
+        'email': data['email'] ?? '',
+      };
+    }).toList();
+
+    final selectedUserIds = <String>{};
+
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create User Group'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Group Name',
-                border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Create User Group'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Group Name',
+                      border: OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Description (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Select Users',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  if (users.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'No users available',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  else
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: users.length,
+                        itemBuilder: (context, index) {
+                          final user = users[index];
+                          final userId = user['id'] as String;
+                          final isSelected = selectedUserIds.contains(userId);
+
+                          return CheckboxListTile(
+                            title: Text(user['name'] as String),
+                            subtitle: Text(user['email'] as String),
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setState(() {
+                                if (value == true) {
+                                  selectedUserIds.add(userId);
+                                } else {
+                                  selectedUserIds.remove(userId);
+                                }
+                              });
+                            },
+                            activeColor: const Color(0xFF673AB7),
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${selectedUserIds.length} user(s) selected',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
               ),
-              autofocus: true,
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description (optional)',
-                border: OutlineInputBorder(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a group name')),
+                  );
+                  return;
+                }
+                Navigator.pop(context, true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF673AB7),
+                foregroundColor: Colors.white,
               ),
-              maxLines: 3,
+              child: const Text('Create'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a group name')),
-                );
-                return;
-              }
-              Navigator.pop(context, true);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF673AB7),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Create'),
-          ),
-        ],
       ),
     );
 
@@ -738,12 +815,16 @@ class _UsersPageState extends State<UsersPage>
         await _firestoreService.createUserGroup({
           'name': nameController.text.trim(),
           'description': descriptionController.text.trim(),
-          'members': [],
+          'members': selectedUserIds.toList(),
         });
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('User group created successfully')),
+            SnackBar(
+              content: Text(
+                'User group created successfully with ${selectedUserIds.length} member(s)',
+              ),
+            ),
           );
         }
       } catch (e) {

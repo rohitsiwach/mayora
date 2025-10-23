@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'splash_screen.dart';
 import 'about_page.dart';
@@ -8,11 +10,29 @@ import 'services/auth_service.dart';
 import 'pages/projects_page.dart';
 import 'pages/users_page.dart';
 import 'pages/invitation_signup_page.dart';
+import 'pages/settings_page.dart';
+import 'providers/theme_provider.dart';
+import 'providers/locale_provider.dart';
+import 'l10n/app_localizations.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(const MayoraApp());
+  
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    debugPrint('Firebase initialization error: $e');
+  }
+  
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
+      ],
+      child: const MayoraApp(),
+    ),
+  );
 }
 
 class MayoraApp extends StatelessWidget {
@@ -20,21 +40,74 @@ class MayoraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Mayora',
+    return Consumer2<ThemeProvider, LocaleProvider>(
+      builder: (context, themeProvider, localeProvider, child) {
+        // Show a loading screen while providers are initializing
+        if (!themeProvider.isInitialized || !localeProvider.isInitialized) {
+          return MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
+
+        return MaterialApp(
+          title: 'Mayora',
+          themeMode: themeProvider.themeMode,
+          locale: localeProvider.locale,
+          supportedLocales: localeProvider.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF673AB7), // Purple color matching the logo
           brightness: Brightness.light,
         ),
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          filled: true,
+        ),
       ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const AuthWrapper(),
-        '/home': (context) => const MayoraHomePage(title: 'Mayora'),
-        '/splash': (context) => const SplashScreen(),
-        '/invitation-signup': (context) => const InvitationSignUpPage(),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF673AB7),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          filled: true,
+        ),
+      ),
+          initialRoute: '/',
+          routes: {
+            '/': (context) => const AuthWrapper(),
+            '/home': (context) => const MayoraHomePage(title: 'Mayora'),
+            '/splash': (context) => const SplashScreen(),
+            '/invitation-signup': (context) => const InvitationSignUpPage(),
+          },
+        );
       },
     );
   }
@@ -301,19 +374,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                     Navigator.pop(context);
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.info),
-                  title: const Text('About'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AboutPage(),
-                      ),
-                    );
-                  },
-                ),
                 const Divider(),
 
                 // Management Section
@@ -342,18 +402,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.business_outlined),
-                  title: const Text('Companies'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Company management coming soon!'),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
                   leading: const Icon(Icons.folder_outlined),
                   title: const Text('Projects'),
                   onTap: () {
@@ -366,18 +414,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                     );
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.assignment_outlined),
-                  title: const Text('Tasks'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Task management coming soon!'),
-                      ),
-                    );
-                  },
-                ),
                 const Divider(),
 
                 ListTile(
@@ -385,8 +421,11 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                   title: const Text('Settings'),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Settings coming soon!')),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsPage(),
+                      ),
                     );
                   },
                 ),
