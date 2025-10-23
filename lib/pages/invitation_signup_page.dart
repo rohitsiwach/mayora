@@ -419,7 +419,7 @@ class _InvitationSignUpPageState extends State<InvitationSignUpPage> {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          value: _insuranceType,
+          initialValue: _insuranceType,
           decoration: InputDecoration(
             labelText: 'Insurance Type *',
             prefixIcon: const Icon(Icons.health_and_safety),

@@ -8,6 +8,9 @@ import 'services/auth_service.dart';
 import 'pages/projects_page.dart';
 import 'pages/users_page.dart';
 import 'pages/invitation_signup_page.dart';
+import 'pages/settings_page.dart';
+import 'settings/settings_controller.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,21 +23,46 @@ class MayoraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Mayora',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF673AB7), // Purple color matching the logo
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const AuthWrapper(),
-        '/home': (context) => const MayoraHomePage(title: 'Mayora'),
-        '/splash': (context) => const SplashScreen(),
-        '/invitation-signup': (context) => const InvitationSignUpPage(),
+    final settings = SettingsController.instance;
+    return AnimatedBuilder(
+      animation: settings,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'Mayora',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF673AB7),
+              brightness: Brightness.light,
+            ),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF673AB7),
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+          ),
+          themeMode: settings.themeMode,
+          locale: settings.locale,
+          supportedLocales: const [
+            Locale('en'),
+            Locale('de'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          initialRoute: '/',
+          routes: {
+            '/': (context) => const AuthWrapper(),
+            '/home': (context) => const MayoraHomePage(title: 'Mayora'),
+            '/splash': (context) => const SplashScreen(),
+            '/invitation-signup': (context) => const InvitationSignUpPage(),
+            '/settings': (context) => const SettingsPage(),
+          },
+        );
       },
     );
   }
@@ -385,8 +413,11 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                   title: const Text('Settings'),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Settings coming soon!')),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsPage(),
+                      ),
                     );
                   },
                 ),

@@ -1392,7 +1392,7 @@ class _UserInvitationDialogState extends State<UserInvitationDialog> {
                       const SizedBox(height: 16),
 
                       DropdownButtonFormField<String>(
-                        value: _accessLevel,
+                        initialValue: _accessLevel,
                         decoration: const InputDecoration(
                           labelText: 'Access Level',
                           prefixIcon: Icon(Icons.security),
@@ -1422,7 +1422,7 @@ class _UserInvitationDialogState extends State<UserInvitationDialog> {
                       const SizedBox(height: 16),
 
                       DropdownButtonFormField<String>(
-                        value: _paymentType,
+                        initialValue: _paymentType,
                         decoration: const InputDecoration(
                           labelText: 'Payment Type',
                           prefixIcon: Icon(Icons.payment),

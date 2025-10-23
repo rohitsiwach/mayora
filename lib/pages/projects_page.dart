@@ -503,7 +503,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
                       // Project Type
                       DropdownButtonFormField<String>(
-                        value: _projectType,
+                        initialValue: _projectType,
                         decoration: InputDecoration(
                           labelText: 'Project Type *',
                           prefixIcon: const Icon(Icons.category),
@@ -536,7 +536,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
                           'Will this project be billed to a client?',
                         ),
                         value: _billableToClient,
-                        activeColor: const Color(0xFF673AB7),
+                        activeThumbColor: const Color(0xFF673AB7),
                         onChanged: (value) {
                           setState(() {
                             _billableToClient = value;
@@ -622,7 +622,7 @@ class _ProjectFormDialogState extends State<ProjectFormDialog> {
 
                         // Payment Type
                         DropdownButtonFormField<String>(
-                          value: _paymentType,
+                          initialValue: _paymentType,
                           decoration: InputDecoration(
                             labelText: 'Payment Type *',
                             prefixIcon: const Icon(Icons.payments),

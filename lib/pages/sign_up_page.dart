@@ -53,7 +53,7 @@ class _SignUpPageState extends State<SignUpPage> {
   bool _showInfoPopup = true;
 
   // User Details
-  String _accessLevel = 'Admin'; // Always Admin for first user
+  final String _accessLevel = 'Admin'; // Always Admin for first user
   String _paymentType = 'Monthly';
   String _insuranceType = 'Public';
   DateTime _hireDate = DateTime.now();
@@ -1044,7 +1044,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
                           // Payment Type Dropdown
                           DropdownButtonFormField<String>(
-                            value: _paymentType,
+                            initialValue: _paymentType,
                             decoration: InputDecoration(
                               labelText: 'Payment Type *',
                               prefixIcon: const Icon(Icons.payment),
@@ -1278,7 +1278,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
                           // Insurance Type Dropdown
                           DropdownButtonFormField<String>(
-                            value: _insuranceType,
+                            initialValue: _insuranceType,
                             decoration: InputDecoration(
                               labelText: 'Insurance Type *',
                               prefixIcon: const Icon(Icons.health_and_safety),
