@@ -125,18 +125,21 @@
           "order": "ASCENDING"
         }
       ]
-    }
-  ],
-  "fieldOverrides": [
+    },
     {
-      "collectionGroup": "schedules",
-      "fieldPath": "date",
-      "indexes": [
+      "collectionGroup": "leaves",
+      "queryScope": "COLLECTION",
+      "fields": [
         {
-          "order": "DESCENDING",
-          "queryScope": "COLLECTION"
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startDate",
+          "order": "DESCENDING"
         }
       ]
     }
-  ]
+  ],
+  "fieldOverrides": []
 }

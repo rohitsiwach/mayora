@@ -13,6 +13,7 @@ import 'pages/leave_page.dart';
 import 'pages/requests_page.dart';
 import 'pages/schedule_page.dart';
 import 'settings/settings_controller.dart';
+import 'widgets/shift_calendar_widget.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() async {
@@ -120,10 +121,10 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
         ),
       ),
       drawer: _buildDrawer(context),
-      body: Center(
+      body: SingleChildScrollView(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
+            const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -158,55 +159,66 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                 color: const Color(0xFF673AB7),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
+
+            // Shift Calendar Widget
+            const ShiftCalendarWidget(),
+
+            const SizedBox(height: 20),
 
             // Mock dashboard cards
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDashboardCard(
-                    context,
-                    'Projects',
-                    '12',
-                    Icons.folder_outlined,
-                    Colors.blue,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildDashboardCard(
+                      context,
+                      'Projects',
+                      '12',
+                      Icons.folder_outlined,
+                      Colors.blue,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildDashboardCard(
-                    context,
-                    'Tasks',
-                    '34',
-                    Icons.task_alt,
-                    Colors.green,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildDashboardCard(
+                      context,
+                      'Tasks',
+                      '34',
+                      Icons.task_alt,
+                      Colors.green,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDashboardCard(
-                    context,
-                    'Team',
-                    '8',
-                    Icons.people_outline,
-                    Colors.orange,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildDashboardCard(
+                      context,
+                      'Team',
+                      '8',
+                      Icons.people_outline,
+                      Colors.orange,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildDashboardCard(
-                    context,
-                    'Messages',
-                    '5',
-                    Icons.message_outlined,
-                    Colors.purple,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildDashboardCard(
+                      context,
+                      'Messages',
+                      '5',
+                      Icons.message_outlined,
+                      Colors.purple,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 30),
             const Text('Counter Demo:'),
@@ -214,6 +226,7 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

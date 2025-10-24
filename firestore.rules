@@ -128,6 +128,26 @@ service cloud.firestore {
         // Prevent deletion of leave requests (for audit trail)
         allow delete: if false;
       }
+
+      // Schedule subcollection for each user
+      match /schedules/{scheduleId} {
+        // Allow users to read their own schedules
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        // Allow Admin/Manager to create schedules for users in their organization
+        allow create: if request.auth != null &&
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'] &&
+                        request.resource.data.userId == userId &&
+                        request.resource.data.title is string &&
+                        request.resource.data.organizationId is string &&
+                        request.resource.data.date is timestamp &&
+                        request.resource.data.createdBy == request.auth.uid &&
+                        request.resource.data.createdAt is timestamp;
+
+        // Allow admins/managers to update/delete schedules
+        allow update, delete: if request.auth != null &&
+                                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'];
+      }
     }
 
     // Wildcard rule to support collection group queries on any `leaves` subcollection

@@ -75,8 +75,8 @@ class _SchedulePageState extends State<SchedulePage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _buildError()
-              : _buildContent(),
+          ? _buildError()
+          : _buildContent(),
     );
   }
 
@@ -98,7 +98,7 @@ class _SchedulePageState extends State<SchedulePage> {
               },
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
-            )
+            ),
           ],
         ),
       ),
@@ -114,10 +114,7 @@ class _SchedulePageState extends State<SchedulePage> {
           const SizedBox(height: 16),
           _buildProgress(),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 400,
-            child: _buildRecentSchedules(),
-          ),
+          SizedBox(height: 400, child: _buildRecentSchedules()),
         ],
       ),
     );
@@ -138,7 +135,10 @@ class _SchedulePageState extends State<SchedulePage> {
                 children: [
                   const Icon(Icons.access_time, color: Color(0xFF2962FF)),
                   const SizedBox(width: 8),
-                  Text('Create New Shift', style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    'Create New Shift',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -148,19 +148,34 @@ class _SchedulePageState extends State<SchedulePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Employee', style: TextStyle(fontWeight: FontWeight.w500)),
+                        const Text(
+                          'Employee',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           value: _targetMode,
                           isExpanded: true,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 16,
+                            ),
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'single', child: Text('Individual')),
-                            DropdownMenuItem(value: 'group', child: Text('Employee Group')),
-                            DropdownMenuItem(value: 'multiple', child: Text('Multiple Users')),
+                            DropdownMenuItem(
+                              value: 'single',
+                              child: Text('Individual'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'group',
+                              child: Text('Employee Group'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'multiple',
+                              child: Text('Multiple Users'),
+                            ),
                           ],
                           onChanged: (v) {
                             setState(() {
@@ -179,12 +194,12 @@ class _SchedulePageState extends State<SchedulePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Select', style: TextStyle(fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 58,
-                          child: _buildTargetSelector(),
+                        const Text(
+                          'Select',
+                          style: TextStyle(fontWeight: FontWeight.w500),
                         ),
+                        const SizedBox(height: 8),
+                        SizedBox(height: 58, child: _buildTargetSelector()),
                       ],
                     ),
                   ),
@@ -201,7 +216,10 @@ class _SchedulePageState extends State<SchedulePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Start Time', style: TextStyle(fontWeight: FontWeight.w500)),
+                        const Text(
+                          'Start Time',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
                         const SizedBox(height: 8),
                         _buildTimePicker(true),
                       ],
@@ -212,7 +230,10 @@ class _SchedulePageState extends State<SchedulePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('End Time', style: TextStyle(fontWeight: FontWeight.w500)),
+                        const Text(
+                          'End Time',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
                         const SizedBox(height: 8),
                         _buildTimePicker(false),
                       ],
@@ -227,12 +248,16 @@ class _SchedulePageState extends State<SchedulePage> {
                   labelText: 'Shift Title *',
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  const Text('Recurring Shift', style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text(
+                    'Recurring Shift',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                   const Spacer(),
                   Checkbox(
                     value: _isRecurring,
@@ -242,13 +267,22 @@ class _SchedulePageState extends State<SchedulePage> {
               ),
               if (_isRecurring) ...[
                 const SizedBox(height: 8),
-                const Text('Create this shift on multiple days', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text(
+                  'Create this shift on multiple days',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
                 const SizedBox(height: 12),
-                const Text('Select Days:', style: TextStyle(fontWeight: FontWeight.w500)),
+                const Text(
+                  'Select Days:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
                 const SizedBox(height: 8),
                 _buildDaySelector(),
                 const SizedBox(height: 12),
-                const Text('End Date:', style: TextStyle(fontWeight: FontWeight.w500)),
+                const Text(
+                  'End Date:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
                 const SizedBox(height: 8),
                 _buildEndDateDisplay(),
               ],
@@ -274,7 +308,9 @@ class _SchedulePageState extends State<SchedulePage> {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed: _organizationId == null ? null : _startScheduling,
+                      onPressed: _organizationId == null
+                          ? null
+                          : _startScheduling,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2962FF),
                         foregroundColor: Colors.white,
@@ -368,16 +404,35 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   String _getDayName(int weekday) {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
     return days[weekday - 1];
   }
 
   String _getMonthName(int month) {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                    'July', 'August', 'September', 'October', 'November', 'December'];
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
     return months[month - 1];
   }
-
 
   Widget _buildDatePicker() {
     return InkWell(
@@ -428,7 +483,10 @@ class _SchedulePageState extends State<SchedulePage> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const InputDecorator(
-            decoration: InputDecoration(border: OutlineInputBorder(), labelText: 'Users'),
+            decoration: InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'Users',
+            ),
             child: Text('Loading...'),
           );
         }
@@ -440,23 +498,36 @@ class _SchedulePageState extends State<SchedulePage> {
           final uid = (data['userId'] ?? d.id).toString();
           final name = (data['name'] ?? data['email'] ?? uid).toString();
           // Keep first occurrence; prefer non-empty name if duplicate encountered
-          if (!userMap.containsKey(uid) || (userMap[uid] == uid && name != uid)) {
+          if (!userMap.containsKey(uid) ||
+              (userMap[uid] == uid && name != uid)) {
             userMap[uid] = name;
           }
         }
         // Sort for stability and build a key to reset field when options change
         final entries = userMap.entries.toList()
-          ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+          ..sort(
+            (a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()),
+          );
         final items = entries
-            .map((e) => DropdownMenuItem<String>(value: e.key, child: Text(e.value)))
+            .map(
+              (e) =>
+                  DropdownMenuItem<String>(value: e.key, child: Text(e.value)),
+            )
             .toList();
-        final dropdownKey = ValueKey<String>('users_${entries.map((e) => e.key).join('|')}');
-        final String? safeValue = userMap.containsKey(_selectedUserId) ? _selectedUserId : null;
+        final dropdownKey = ValueKey<String>(
+          'users_${entries.map((e) => e.key).join('|')}',
+        );
+        final String? safeValue = userMap.containsKey(_selectedUserId)
+            ? _selectedUserId
+            : null;
         return DropdownButtonFormField<String>(
           key: dropdownKey,
           value: safeValue,
           isExpanded: true,
-          decoration: const InputDecoration(labelText: 'User *', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+            labelText: 'User *',
+            border: OutlineInputBorder(),
+          ),
           items: items,
           onChanged: (v) => setState(() => _selectedUserId = v),
           validator: (v) => (v == null || v.isEmpty) ? 'Select a user' : null,
@@ -474,21 +545,30 @@ class _SchedulePageState extends State<SchedulePage> {
       builder: (context, snapshot) {
         final items = <DropdownMenuItem<String>>[];
         if (snapshot.hasData) {
-          items.addAll(snapshot.data!.docs.map((d) {
-            final data = d.data();
-            return DropdownMenuItem<String>(
-              value: d.id,
-              child: Text(data['name'] ?? 'Group ${d.id.substring(0, 6)}'),
-            );
-          }));
+          items.addAll(
+            snapshot.data!.docs.map((d) {
+              final data = d.data();
+              return DropdownMenuItem<String>(
+                value: d.id,
+                child: Text(data['name'] ?? 'Group ${d.id.substring(0, 6)}'),
+              );
+            }),
+          );
         }
-        final groupKey = ValueKey<String>('groups_${items.map((e) => e.value).join('|')}');
-        final safeGroupValue = items.any((i) => i.value == _selectedGroupId) ? _selectedGroupId : null;
+        final groupKey = ValueKey<String>(
+          'groups_${items.map((e) => e.value).join('|')}',
+        );
+        final safeGroupValue = items.any((i) => i.value == _selectedGroupId)
+            ? _selectedGroupId
+            : null;
         return DropdownButtonFormField<String>(
           key: groupKey,
           value: safeGroupValue,
           isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Group *', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+            labelText: 'Group *',
+            border: OutlineInputBorder(),
+          ),
           items: items,
           onChanged: (v) => setState(() => _selectedGroupId = v),
           validator: (v) => (v == null || v.isEmpty) ? 'Select a group' : null,
@@ -529,58 +609,72 @@ class _SchedulePageState extends State<SchedulePage> {
                   .where('organizationId', isEqualTo: _organizationId)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData)
+                  return const Center(child: CircularProgressIndicator());
                 final docs = snapshot.data!.docs;
                 // Deduplicate by userId
                 final Map<String, String> userMap = {};
                 for (final d in docs) {
                   final data = d.data();
                   final uid = (data['userId'] ?? d.id).toString();
-                  final name = (data['name'] ?? data['email'] ?? uid).toString();
-                  if (!userMap.containsKey(uid) || (userMap[uid] == uid && name != uid)) {
+                  final name = (data['name'] ?? data['email'] ?? uid)
+                      .toString();
+                  if (!userMap.containsKey(uid) ||
+                      (userMap[uid] == uid && name != uid)) {
                     userMap[uid] = name;
                   }
                 }
-                return StatefulBuilder(builder: (context, setStateDialog) {
-                  // Keep tempSelected in sync and ensure only valid userIds remain
-                  tempSelected.removeWhere((id) => !userMap.containsKey(id));
-                  final entries = userMap.entries.toList();
-                  return ListView.builder(
-                    itemCount: entries.length,
-                    itemBuilder: (context, index) {
-                      final e = entries[index];
-                      final uid = e.key;
-                      final name = e.value;
-                      final selected = tempSelected.contains(uid);
-                      return CheckboxListTile(
-                        value: selected,
-                        title: Text(name),
-                        onChanged: (v) {
-                          setStateDialog(() {
-                            if (v == true) {
-                              tempSelected.add(uid);
-                            } else {
-                              tempSelected.remove(uid);
-                            }
-                          });
-                        },
-                      );
-                    },
-                  );
-                });
+                return StatefulBuilder(
+                  builder: (context, setStateDialog) {
+                    // Keep tempSelected in sync and ensure only valid userIds remain
+                    tempSelected.removeWhere((id) => !userMap.containsKey(id));
+                    final entries = userMap.entries.toList();
+                    return ListView.builder(
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) {
+                        final e = entries[index];
+                        final uid = e.key;
+                        final name = e.value;
+                        final selected = tempSelected.contains(uid);
+                        return CheckboxListTile(
+                          value: selected,
+                          title: Text(name),
+                          onChanged: (v) {
+                            setStateDialog(() {
+                              if (v == true) {
+                                tempSelected.add(uid);
+                              } else {
+                                tempSelected.remove(uid);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
               },
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, tempSelected), child: const Text('Done')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, tempSelected),
+              child: const Text('Done'),
+            ),
           ],
         );
       },
     );
-    if (result != null) setState(() => _selectedUserIds
-      ..clear()
-      ..addAll(result));
+    if (result != null)
+      setState(
+        () => _selectedUserIds
+          ..clear()
+          ..addAll(result),
+      );
   }
 
   Widget _buildProgress() {
@@ -599,7 +693,7 @@ class _SchedulePageState extends State<SchedulePage> {
               children: [
                 const Icon(Icons.sync, color: Colors.blue),
                 const SizedBox(width: 8),
-                Text('Scheduling Progress (${_completed}/$_total)')
+                Text('Scheduling Progress (${_completed}/$_total)'),
               ],
             ),
             const SizedBox(height: 8),
@@ -632,7 +726,10 @@ class _SchedulePageState extends State<SchedulePage> {
     } else if (_targetMode == 'group') {
       if (_selectedGroupId == null) return;
       // Load group members (userIds array)
-      final groupDoc = await FirebaseFirestore.instance.collection('user_groups').doc(_selectedGroupId).get();
+      final groupDoc = await FirebaseFirestore.instance
+          .collection('user_groups')
+          .doc(_selectedGroupId)
+          .get();
       final data = groupDoc.data() ?? {};
       final List<dynamic> members = data['userIds'] ?? [];
       users = members.map((e) => e.toString()).toList();
@@ -641,7 +738,9 @@ class _SchedulePageState extends State<SchedulePage> {
     }
 
     if (users.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one user')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Select at least one user')));
       return;
     }
 
@@ -662,6 +761,12 @@ class _SchedulePageState extends State<SchedulePage> {
     });
 
     final createdBy = _auth.currentUser?.uid ?? 'system';
+    print('[SchedulePage] Starting batch scheduling');
+    print('[SchedulePage] organizationId: $_organizationId');
+    print('[SchedulePage] createdBy: $createdBy');
+    print('[SchedulePage] users: $users');
+    print('[SchedulePage] title: $title');
+
     final stream = _scheduler.createSchedulesBatch(
       organizationId: _organizationId!,
       createdBy: createdBy,
@@ -674,47 +779,77 @@ class _SchedulePageState extends State<SchedulePage> {
 
     setState(() => _progressStream = stream);
 
-    stream.listen((evt) {
-      setState(() {
-        _completed = evt.completed;
-        _total = evt.total;
-        _progress.insert(0, evt.message);
-      });
-    }, onError: (e) {
-      setState(() {
-        _progress.insert(0, 'Fatal error: $e');
-      });
-    }, onDone: () {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scheduling completed')));
-    });
+    stream.listen(
+      (evt) {
+        print('[SchedulePage] Progress: ${evt.completed}/${evt.total} - ${evt.message}');
+        setState(() {
+          _completed = evt.completed;
+          _total = evt.total;
+          _progress.insert(0, evt.message);
+        });
+      },
+      onError: (e, stackTrace) {
+        print('[SchedulePage] Error: $e');
+        print('[SchedulePage] Stack: $stackTrace');
+        setState(() {
+          _progress.insert(0, 'Fatal error: $e');
+        });
+      },
+      onDone: () {
+        print('[SchedulePage] Scheduling completed');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Scheduling completed')));
+      },
+    );
   }
 
   Widget _buildRecentSchedules() {
-    if (_organizationId == null) return const SizedBox.shrink();
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return const SizedBox.shrink();
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(_organizationId)
+          .collection('users')
+          .doc(currentUser.uid)
           .collection('schedules')
           .orderBy('date', descending: true)
           .limit(25)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        // Handle errors
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading schedules: ${snapshot.error}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
+
+        // Loading state
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
         final docs = snapshot.data!.docs;
-        if (docs.isEmpty) return const Center(child: Text('No schedules yet'));
+        if (docs.isEmpty) {
+          return const Center(child: Text('No schedules yet'));
+        }
+
         return ListView.separated(
           itemCount: docs.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             final data = docs[index].data();
             final date = (data['date'] as Timestamp?)?.toDate();
-            final userId = data['userId'] ?? '';
             final title = data['title'] ?? '';
             return ListTile(
               leading: const Icon(Icons.schedule),
               title: Text(title),
-              subtitle: Text('User: $userId  |  Date: ${date != null ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}' : '-'}'),
+              subtitle: Text(
+                'Date: ${date != null ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}' : '-'}',
+              ),
             );
           },
         );

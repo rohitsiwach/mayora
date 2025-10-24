@@ -6,17 +6,22 @@ class ScheduleService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final LeaveService _leaveService = LeaveService();
 
-  /// Create a schedule document under organizations/{orgId}/schedules
+  /// Create a schedule document under users/{userId}/schedules
   Future<void> createSchedule(ShiftSchedule schedule) async {
-    final orgRef = _firestore
-        .collection('organizations')
-        .doc(schedule.organizationId)
+    final userRef = _firestore
+        .collection('users')
+        .doc(schedule.userId)
         .collection('schedules');
 
-    // Deterministic ID for idempotency: userId_yyyyMMdd
-    final keyDate = DateTime(schedule.date.year, schedule.date.month, schedule.date.day);
-    final id = '${schedule.userId}_${keyDate.year}${keyDate.month.toString().padLeft(2, '0')}${keyDate.day.toString().padLeft(2, '0')}';
-    await orgRef.doc(id).set(schedule.toMap());
+    // Deterministic ID for idempotency: yyyyMMdd
+    final keyDate = DateTime(
+      schedule.date.year,
+      schedule.date.month,
+      schedule.date.day,
+    );
+    final id =
+        '${keyDate.year}${keyDate.month.toString().padLeft(2, '0')}${keyDate.day.toString().padLeft(2, '0')}';
+    await userRef.doc(id).set(schedule.toMap());
   }
 
   /// Batch-create schedules for multiple users across multiple dates.
@@ -33,19 +38,39 @@ class ScheduleService {
     final endOfYear = DateTime(startDate.year, 12, 31);
     final dates = <DateTime>[];
     var current = DateTime(startDate.year, startDate.month, startDate.day);
-    while (!current.isAfter(endOfYear)) {
-      // If weekly and selectedDays is provided, only include matching weekdays
-      if (recurrence == Recurrence.weekly && selectedDays != null && selectedDays.isNotEmpty) {
-        if (selectedDays.contains(current.weekday)) {
-          dates.add(current);
+    
+    // For non-recurring, just add the start date
+    if (recurrence == Recurrence.none) {
+      dates.add(current);
+    } else if (recurrence == Recurrence.daily) {
+      // Add all days from startDate to end of year
+      while (!current.isAfter(endOfYear)) {
+        dates.add(current);
+        current = current.add(const Duration(days: 1));
+      }
+    } else if (recurrence == Recurrence.weekly) {
+      // For weekly recurrence with specific days selected
+      if (selectedDays != null && selectedDays.isNotEmpty) {
+        // Iterate through all days from start to end, adding only matching weekdays
+        while (!current.isAfter(endOfYear)) {
+          if (selectedDays.contains(current.weekday)) {
+            dates.add(current);
+          }
+          current = current.add(const Duration(days: 1));
         }
       } else {
-        dates.add(current);
+        // No specific days selected, repeat same weekday as startDate every week
+        while (!current.isAfter(endOfYear)) {
+          dates.add(current);
+          current = current.add(const Duration(days: 7));
+        }
       }
-      if (recurrence == Recurrence.none) break;
-      current = recurrence == Recurrence.daily
-          ? current.add(const Duration(days: 1))
-          : current.add(const Duration(days: 7));
+    }
+
+    print('[ScheduleService] Generated ${dates.length} dates for scheduling');
+    print('[ScheduleService] First 5 dates: ${dates.take(5).map((d) => _fmt(d)).join(", ")}');
+    if (dates.length > 5) {
+      print('[ScheduleService] Last 5 dates: ${dates.skip(dates.length - 5).map((d) => _fmt(d)).join(", ")}');
     }
 
     int total = dates.length * userIds.length;
@@ -95,7 +120,8 @@ class ScheduleService {
     }
   }
 
-  String _fmt(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  String _fmt(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
 
 enum Recurrence { none, daily, weekly }
