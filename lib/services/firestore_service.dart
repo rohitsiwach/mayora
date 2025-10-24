@@ -78,7 +78,8 @@ class FirestoreService {
       }
 
       // If we still don't have organizationId or accessLevel, try organizations collection
-      if (dataToWrite['organizationId'] == null || dataToWrite['accessLevel'] == null) {
+      if (dataToWrite['organizationId'] == null ||
+          dataToWrite['accessLevel'] == null) {
         try {
           final orgByAdmin = await _firestore
               .collection('organizations')
@@ -581,7 +582,7 @@ class FirestoreService {
           .where('userId', isEqualTo: userId)
           .limit(1)
           .get();
-      
+
       if (querySnapshot.docs.isNotEmpty) {
         final data = querySnapshot.docs.first.data();
         if (data['hireDate'] != null) {
@@ -608,7 +609,7 @@ class FirestoreService {
           .where('userId', isEqualTo: userId)
           .limit(1)
           .get();
-      
+
       if (querySnapshot.docs.isNotEmpty) {
         final data = querySnapshot.docs.first.data();
         return data['yearlyVacations'] as int?;

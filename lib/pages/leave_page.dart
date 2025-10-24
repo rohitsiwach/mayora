@@ -71,7 +71,8 @@ class _LeavePageState extends State<LeavePage> {
     final now = DateTime.now();
     final yearEnd = DateTime(now.year, 12, 31);
     final joinDate = _joinDate ?? DateTime(now.year, 1, 1);
-    final isMidYear = joinDate.year == now.year && joinDate.isAfter(DateTime(now.year, 1, 1));
+    final isMidYear =
+        joinDate.year == now.year && joinDate.isAfter(DateTime(now.year, 1, 1));
     if (isMidYear) {
       final remainingDays = yearEnd.difference(joinDate).inDays + 1;
       final prorated = ((remainingDays / 365) * _totalAnnualLeaves).round();
@@ -91,19 +92,26 @@ class _LeavePageState extends State<LeavePage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : (_errorMessage != null)
-              ? _buildErrorState()
-              : Column(
+          ? _buildErrorState()
+          : Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Row(
                     children: [
-                      const Icon(Icons.beach_access, color: Colors.blue, size: 32),
+                      const Icon(
+                        Icons.beach_access,
+                        color: Colors.blue,
+                        size: 32,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Remaining leave for the year: $_remainingLeaves',
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
@@ -179,7 +187,10 @@ class _LeavePageState extends State<LeavePage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
-            title: const Text('Apply for Leave', style: TextStyle(fontSize: 18)),
+            title: const Text(
+              'Apply for Leave',
+              style: TextStyle(fontSize: 18),
+            ),
             content: SingleChildScrollView(
               child: Form(
                 key: formKey,
@@ -206,7 +217,8 @@ class _LeavePageState extends State<LeavePage> {
                           selectedLeaveType = value;
                         });
                       },
-                      validator: (value) => value == null ? 'Select leave type' : null,
+                      validator: (value) =>
+                          value == null ? 'Select leave type' : null,
                     ),
                     const SizedBox(height: 16),
                     InkWell(
@@ -215,7 +227,9 @@ class _LeavePageState extends State<LeavePage> {
                           context: context,
                           initialDate: DateTime.now(),
                           firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365),
+                          ),
                         );
                         if (picked != null) {
                           setState(() {
@@ -239,7 +253,9 @@ class _LeavePageState extends State<LeavePage> {
                               ? DateFormat('dd/MM/yyyy').format(startDate!)
                               : 'Select start date',
                           style: TextStyle(
-                            color: startDate != null ? Colors.black87 : Colors.grey,
+                            color: startDate != null
+                                ? Colors.black87
+                                : Colors.grey,
                           ),
                         ),
                       ),
@@ -253,7 +269,9 @@ class _LeavePageState extends State<LeavePage> {
                                 context: context,
                                 initialDate: startDate!,
                                 firstDate: startDate!,
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                                lastDate: DateTime.now().add(
+                                  const Duration(days: 365),
+                                ),
                               );
                               if (picked != null) {
                                 setState(() {
@@ -275,7 +293,9 @@ class _LeavePageState extends State<LeavePage> {
                               ? DateFormat('dd/MM/yyyy').format(endDate!)
                               : 'Select end date',
                           style: TextStyle(
-                            color: endDate != null ? Colors.black87 : Colors.grey,
+                            color: endDate != null
+                                ? Colors.black87
+                                : Colors.grey,
                           ),
                         ),
                       ),
@@ -448,10 +468,19 @@ class _LeavePageState extends State<LeavePage> {
           children: [
             Row(
               children: [
-                Text(request.leaveTypeName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  request.leaveTypeName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: request.statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
@@ -521,7 +550,10 @@ class _LeavePageState extends State<LeavePage> {
                           const SizedBox(height: 4),
                           Text(
                             request.reviewComments!,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                            ),
                           ),
                         ],
                       ),

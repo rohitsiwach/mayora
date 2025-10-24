@@ -5,7 +5,10 @@ class LeaveService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Submit a new leave request to user's subcollection
-  Future<void> submitUserLeaveRequest(String userId, LeaveRequest request) async {
+  Future<void> submitUserLeaveRequest(
+    String userId,
+    LeaveRequest request,
+  ) async {
     await _firestore
         .collection('users')
         .doc(userId)
@@ -22,25 +25,27 @@ class LeaveService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => LeaveRequest.fromMap(doc.id, doc.data()))
-          .toList();
-    });
+          return snapshot.docs
+              .map((doc) => LeaveRequest.fromMap(doc.id, doc.data()))
+              .toList();
+        });
   }
 
   // Get all leave requests for an organization (for managers/admins)
   // This uses collection group query to get all leaves across all users
-  Stream<List<LeaveRequest>> getOrganizationLeaveRequests(String organizationId) {
+  Stream<List<LeaveRequest>> getOrganizationLeaveRequests(
+    String organizationId,
+  ) {
     return _firestore
         .collectionGroup('leaves')
         .where('organizationId', isEqualTo: organizationId)
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => LeaveRequest.fromMap(doc.id, doc.data()))
-          .toList();
-    });
+          return snapshot.docs
+              .map((doc) => LeaveRequest.fromMap(doc.id, doc.data()))
+              .toList();
+        });
   }
 
   // Calculate total annual leaves taken for a user in current year
@@ -54,7 +59,10 @@ class LeaveService {
         .doc(userId)
         .collection('leaves')
         .where('status', isEqualTo: 'approved')
-        .where('startDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
+        .where(
+          'startDate',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear),
+        )
         .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(endOfYear))
         .get();
 
@@ -89,7 +97,10 @@ class LeaveService {
         .collection('leaves')
         .where('leaveTypeId', isEqualTo: leaveTypeId)
         .where('status', isEqualTo: 'approved')
-        .where('startDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
+        .where(
+          'startDate',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear),
+        )
         .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(endOfYear))
         .get();
 
@@ -99,6 +110,34 @@ class LeaveService {
       totalDays += (data['numberOfDays'] ?? 0) as int;
     }
     return totalDays;
+  }
+
+  // Check if a user has an approved leave that includes the given date
+  Future<bool> hasApprovedLeaveOn(String userId, DateTime date) async {
+    final day = DateTime(date.year, date.month, date.day);
+    // Firestore restriction: only one range filter per query field. We'll
+    // filter by startDate <= date, then check endDate >= date in memory.
+    final snapshot = await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('leaves')
+        .where('status', isEqualTo: 'approved')
+        .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(day))
+        .orderBy('startDate', descending: true)
+        .limit(25)
+        .get();
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final endTs = data['endDate'] as Timestamp?;
+      if (endTs != null) {
+        final end = endTs.toDate();
+        if (!end.isBefore(day)) {
+          return true; // Conflict: leave spans the day
+        }
+      }
+    }
+    return false;
   }
 
   // Update leave request status (for managers/admins)
@@ -116,11 +155,11 @@ class LeaveService {
         .collection('leaves')
         .doc(requestId)
         .update({
-      'status': status,
-      'reviewedAt': Timestamp.now(),
-      'reviewedBy': reviewedBy,
-      'reviewComments': comments,
-    });
+          'status': status,
+          'reviewedAt': Timestamp.now(),
+          'reviewedBy': reviewedBy,
+          'reviewComments': comments,
+        });
   }
 
   // Cancel leave request (only if pending)
@@ -130,8 +169,6 @@ class LeaveService {
         .doc(userId)
         .collection('leaves')
         .doc(requestId)
-        .update({
-      'status': 'cancelled',
-    });
+        .update({'status': 'cancelled'});
   }
 }
