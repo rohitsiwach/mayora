@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'pages/sign_in_page.dart';
 import 'main.dart';
+import 'services/firestore_service.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -50,9 +51,19 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // If user is logged in, show the main app
+        // If user is logged in, ensure canonical user doc exists before entering app
         if (snapshot.hasData && snapshot.data != null) {
-          return const MayoraHomePage(title: 'Mayora');
+          return FutureBuilder<void>(
+            future: FirestoreService().ensureCanonicalUserDocument(),
+            builder: (context, ensureSnap) {
+              if (ensureSnap.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+              return const MayoraHomePage(title: 'Mayora');
+            },
+          );
         }
 
         // If user is not logged in, show sign in page

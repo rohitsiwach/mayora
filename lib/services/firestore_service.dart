@@ -41,6 +41,90 @@ class FirestoreService {
     _cachedOrganizationId = null;
   }
 
+  /// Ensure there is a canonical user document at `users/{uid}` so that
+  /// security rules can look up the current user's accessLevel/organizationId.
+  Future<void> ensureCanonicalUserDocument() async {
+    final uid = _currentUserId;
+    if (uid == null) return;
+    try {
+      final canonicalRef = _firestore.collection('users').doc(uid);
+      final canonicalSnap = await canonicalRef.get();
+      if (canonicalSnap.exists) return; // Already present
+
+      // Try to find existing profile (created with auto-id) via userId field
+      final existingQuery = await _firestore
+          .collection('users')
+          .where('userId', isEqualTo: uid)
+          .limit(1)
+          .get();
+
+      Map<String, dynamic> dataToWrite = {
+        'userId': uid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (existingQuery.docs.isNotEmpty) {
+        final data = existingQuery.docs.first.data();
+        dataToWrite.addAll({
+          'organizationId': data['organizationId'],
+          'accessLevel': data['accessLevel'],
+          'name': data['name'],
+          'email': data['email'],
+          'createdAt': data['createdAt'] ?? FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Minimal doc so rules can still resolve; organizationId may be filled later
+        dataToWrite['createdAt'] = FieldValue.serverTimestamp();
+      }
+
+      // If we still don't have organizationId or accessLevel, try organizations collection
+      if (dataToWrite['organizationId'] == null || dataToWrite['accessLevel'] == null) {
+        try {
+          final orgByAdmin = await _firestore
+              .collection('organizations')
+              .where('adminUserId', isEqualTo: uid)
+              .limit(1)
+              .get();
+          if (orgByAdmin.docs.isNotEmpty) {
+            dataToWrite['organizationId'] = orgByAdmin.docs.first.id;
+            dataToWrite['accessLevel'] = dataToWrite['accessLevel'] ?? 'Admin';
+          }
+        } catch (_) {}
+      }
+
+      await canonicalRef.set(dataToWrite, SetOptions(merge: true));
+    } catch (e) {
+      // Non-fatal: do not crash app if this fails
+      print('ensureCanonicalUserDocument error: $e');
+    }
+  }
+
+  /// Get current user's access level (Admin/Manager/Employee)
+  Future<String?> getCurrentUserAccessLevel() async {
+    final uid = _currentUserId;
+    if (uid == null) return null;
+    try {
+      // Prefer canonical doc
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists) {
+        return (doc.data() ?? {})['accessLevel'] as String?;
+      }
+      // Fallback to search by userId field
+      final q = await _firestore
+          .collection('users')
+          .where('userId', isEqualTo: uid)
+          .limit(1)
+          .get();
+      if (q.docs.isNotEmpty) {
+        return q.docs.first.data()['accessLevel'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('Error getting access level: $e');
+      return null;
+    }
+  }
+
   // ==================== PROJECTS ====================
 
   /// Add a new project
@@ -484,6 +568,55 @@ class FirestoreService {
     } catch (e) {
       print('Error removing user from group: $e');
       rethrow;
+    }
+  }
+
+  // ==================== USER PROFILE ====================
+
+  /// Get user's join date
+  Future<DateTime?> getUserJoinDate(String userId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('users')
+          .where('userId', isEqualTo: userId)
+          .limit(1)
+          .get();
+      
+      if (querySnapshot.docs.isNotEmpty) {
+        final data = querySnapshot.docs.first.data();
+        if (data['hireDate'] != null) {
+          return (data['hireDate'] as Timestamp).toDate();
+        }
+        // Fallback to createdAt if hireDate not set
+        if (data['createdAt'] != null) {
+          return (data['createdAt'] as Timestamp).toDate();
+        }
+      }
+      // Default to beginning of current year if no date found
+      return DateTime(DateTime.now().year, 1, 1);
+    } catch (e) {
+      print('Error getting user join date: $e');
+      return DateTime(DateTime.now().year, 1, 1);
+    }
+  }
+
+  /// Get user's annual leave entitlement
+  Future<int?> getUserAnnualLeave(String userId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('users')
+          .where('userId', isEqualTo: userId)
+          .limit(1)
+          .get();
+      
+      if (querySnapshot.docs.isNotEmpty) {
+        final data = querySnapshot.docs.first.data();
+        return data['yearlyVacations'] as int?;
+      }
+      return null;
+    } catch (e) {
+      print('Error getting user annual leave: $e');
+      return null;
     }
   }
 

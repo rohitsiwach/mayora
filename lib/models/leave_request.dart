@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LeaveType {
   final String id;
@@ -120,13 +121,13 @@ class LeaveRequest {
       'organizationId': organizationId,
       'leaveTypeId': leaveTypeId,
       'leaveTypeName': leaveTypeName,
-      'startDate': startDate.toIso8601String(),
-      'endDate': endDate.toIso8601String(),
+      'startDate': Timestamp.fromDate(startDate),
+      'endDate': Timestamp.fromDate(endDate),
       'numberOfDays': numberOfDays,
       'reason': reason,
       'status': status,
-      'createdAt': createdAt.toIso8601String(),
-      'reviewedAt': reviewedAt?.toIso8601String(),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'reviewedAt': reviewedAt != null ? Timestamp.fromDate(reviewedAt!) : null,
       'reviewedBy': reviewedBy,
       'reviewComments': reviewComments,
     };
@@ -140,13 +141,13 @@ class LeaveRequest {
       organizationId: map['organizationId'] ?? '',
       leaveTypeId: map['leaveTypeId'] ?? '',
       leaveTypeName: map['leaveTypeName'] ?? '',
-      startDate: DateTime.parse(map['startDate']),
-      endDate: DateTime.parse(map['endDate']),
+      startDate: (map['startDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      endDate: (map['endDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
       numberOfDays: map['numberOfDays'] ?? 0,
       reason: map['reason'] ?? '',
       status: map['status'] ?? 'pending',
-      createdAt: DateTime.parse(map['createdAt']),
-      reviewedAt: map['reviewedAt'] != null ? DateTime.parse(map['reviewedAt']) : null,
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      reviewedAt: (map['reviewedAt'] as Timestamp?)?.toDate(),
       reviewedBy: map['reviewedBy'],
       reviewComments: map['reviewComments'],
     );

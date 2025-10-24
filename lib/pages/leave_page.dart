@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/leave_request.dart';
 import '../services/leave_service.dart';
 import '../services/auth_service.dart';
@@ -15,11 +16,15 @@ class _LeavePageState extends State<LeavePage> {
   final LeaveService _leaveService = LeaveService();
   final AuthService _authService = AuthService();
   final FirestoreService _firestoreService = FirestoreService();
-  
+
   String? _userId;
   String? _organizationId;
-  Map<String, int> _leaveBalances = {};
-  bool _loadingBalances = true;
+  int _totalAnnualLeaves = 30; // Default, can be customized per user
+  int _leavesTaken = 0;
+  int _remainingLeaves = 0;
+  bool _loading = true;
+  String? _errorMessage;
+  DateTime? _joinDate;
 
   @override
   void initState() {
@@ -28,49 +33,84 @@ class _LeavePageState extends State<LeavePage> {
   }
 
   Future<void> _loadUserData() async {
-    final user = _authService.currentUser;
-    if (user != null) {
+    try {
+      final user = _authService.currentUser;
+      if (user == null) {
+        // Not signed in; show friendly message instead of spinning forever
+        setState(() {
+          _errorMessage = 'You need to sign in to view and request leaves.';
+          _loading = false;
+        });
+        return;
+      }
+
       setState(() {
         _userId = user.uid;
       });
+
+      // Fetch required data; failures should not block the whole page
       _organizationId = await _firestoreService.getCurrentUserOrganizationId();
-      await _loadLeaveBalances();
+      _joinDate = await _firestoreService.getUserJoinDate(_userId!);
+      _totalAnnualLeaves =
+          await _firestoreService.getUserAnnualLeave(_userId!) ?? 30;
+      _leavesTaken = await _leaveService.getUserAnnualLeavesTaken(_userId!);
+      _remainingLeaves = _calculateRemainingLeaves();
+    } catch (e) {
+      // Capture error but still unblock UI
+      _errorMessage = 'Failed to load leave data. ${e.toString()}';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
-  Future<void> _loadLeaveBalances() async {
-    if (_userId == null) return;
-    
-    setState(() {
-      _loadingBalances = true;
-    });
-
-    final balances = <String, int>{};
-    for (final leaveType in LeaveType.defaultTypes) {
-      final usedDays = await _leaveService.getUsedLeaveDays(_userId!, leaveType.id);
-      balances[leaveType.id] = leaveType.maxDaysPerYear - usedDays;
+  int _calculateRemainingLeaves() {
+    final now = DateTime.now();
+    final yearEnd = DateTime(now.year, 12, 31);
+    final joinDate = _joinDate ?? DateTime(now.year, 1, 1);
+    final isMidYear = joinDate.year == now.year && joinDate.isAfter(DateTime(now.year, 1, 1));
+    if (isMidYear) {
+      final remainingDays = yearEnd.difference(joinDate).inDays + 1;
+      final prorated = ((remainingDays / 365) * _totalAnnualLeaves).round();
+      return prorated - _leavesTaken;
+    } else {
+      return _totalAnnualLeaves - _leavesTaken;
     }
-
-    setState(() {
-      _leaveBalances = balances;
-      _loadingBalances = false;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Leave Management'),
+        title: const Text('My Leaves'),
         backgroundColor: const Color(0xFF2962FF),
       ),
-      body: _userId == null
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+          : (_errorMessage != null)
+              ? _buildErrorState()
+              : Column(
               children: [
-                _buildLeaveBalanceSection(),
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.beach_access, color: Colors.blue, size: 32),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Remaining leave for the year: $_remainingLeaves',
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -88,137 +128,41 @@ class _LeavePageState extends State<LeavePage> {
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      const Text(
-                        'Leave History',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: _loadLeaveBalances,
-                        tooltip: 'Refresh balances',
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 16),
                 Expanded(child: _buildLeaveHistoryList()),
               ],
             ),
     );
   }
 
-  Widget _buildLeaveBalanceSection() {
-    if (_loadingBalances) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: const Center(
-          child: CircularProgressIndicator(),
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.info_outline, size: 48, color: Colors.orange),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage ?? 'Something went wrong',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _errorMessage = null;
+                  _loading = true;
+                });
+                _loadUserData();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
         ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2962FF), Color(0xFF1E88E5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.account_balance_wallet, color: Colors.white),
-              SizedBox(width: 8),
-              Text(
-                'Leave Balance',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 1,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: LeaveType.defaultTypes.length,
-            itemBuilder: (context, index) {
-              final leaveType = LeaveType.defaultTypes[index];
-              final balance = _leaveBalances[leaveType.id] ?? 0;
-              return _buildBalanceCard(leaveType, balance);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBalanceCard(LeaveType leaveType, int balance) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            leaveType.icon,
-            style: const TextStyle(fontSize: 24),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$balance',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            leaveType.name.split(' ')[0],
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 10,
-            ),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
       ),
     );
   }
@@ -234,14 +178,6 @@ class _LeavePageState extends State<LeavePage> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setState) {
-          final numberOfDays = startDate != null && endDate != null
-              ? endDate!.difference(startDate!).inDays + 1
-              : 0;
-          
-          final availableBalance = selectedLeaveType != null
-              ? _leaveBalances[selectedLeaveType!.id] ?? 0
-              : 0;
-
           return AlertDialog(
             title: const Text('Apply for Leave', style: TextStyle(fontSize: 18)),
             content: SingleChildScrollView(
@@ -251,39 +187,18 @@ class _LeavePageState extends State<LeavePage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Leave Type Dropdown
                     DropdownButtonFormField<LeaveType>(
                       value: selectedLeaveType,
                       decoration: InputDecoration(
-                        labelText: 'Leave Type *',
+                        labelText: 'Type of Leave *',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        prefixIcon: selectedLeaveType != null
-                            ? Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Text(
-                                  selectedLeaveType!.icon,
-                                  style: const TextStyle(fontSize: 20),
-                                ),
-                              )
-                            : const Icon(Icons.arrow_drop_down),
                       ),
                       items: LeaveType.defaultTypes.map((leaveType) {
                         return DropdownMenuItem(
                           value: leaveType,
-                          child: Row(
-                            children: [
-                              Text(leaveType.icon, style: const TextStyle(fontSize: 20)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  leaveType.name,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
+                          child: Text(leaveType.name),
                         );
                       }).toList(),
                       onChanged: (value) {
@@ -291,54 +206,9 @@ class _LeavePageState extends State<LeavePage> {
                           selectedLeaveType = value;
                         });
                       },
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Please select a leave type';
-                        }
-                        return null;
-                      },
+                      validator: (value) => value == null ? 'Select leave type' : null,
                     ),
-                    
-                    if (selectedLeaveType != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              selectedLeaveType!.description,
-                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Icon(Icons.account_balance_wallet, 
-                                    size: 16, color: Colors.blue.shade700),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Available: $availableBalance days',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue.shade900,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    
-                    const SizedBox(height: 20),
-                    
-                    // Start Date
+                    const SizedBox(height: 16),
                     InkWell(
                       onTap: () async {
                         final picked = await showDatePicker(
@@ -366,7 +236,7 @@ class _LeavePageState extends State<LeavePage> {
                         ),
                         child: Text(
                           startDate != null
-                              ? '${startDate!.day}/${startDate!.month}/${startDate!.year}'
+                              ? DateFormat('dd/MM/yyyy').format(startDate!)
                               : 'Select start date',
                           style: TextStyle(
                             color: startDate != null ? Colors.black87 : Colors.grey,
@@ -374,10 +244,7 @@ class _LeavePageState extends State<LeavePage> {
                         ),
                       ),
                     ),
-                    
                     const SizedBox(height: 16),
-
-                    // End Date
                     InkWell(
                       onTap: startDate == null
                           ? null
@@ -405,7 +272,7 @@ class _LeavePageState extends State<LeavePage> {
                         ),
                         child: Text(
                           endDate != null
-                              ? '${endDate!.day}/${endDate!.month}/${endDate!.year}'
+                              ? DateFormat('dd/MM/yyyy').format(endDate!)
                               : 'Select end date',
                           style: TextStyle(
                             color: endDate != null ? Colors.black87 : Colors.grey,
@@ -413,65 +280,7 @@ class _LeavePageState extends State<LeavePage> {
                         ),
                       ),
                     ),
-
-                    if (numberOfDays > 0) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: numberOfDays > availableBalance && selectedLeaveType != null
-                              ? Colors.red.shade50
-                              : Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: numberOfDays > availableBalance && selectedLeaveType != null
-                                ? Colors.red.shade200
-                                : Colors.green.shade200,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              numberOfDays > availableBalance && selectedLeaveType != null
-                                  ? Icons.warning_outlined
-                                  : Icons.info_outline,
-                              color: numberOfDays > availableBalance && selectedLeaveType != null
-                                  ? Colors.red.shade700
-                                  : Colors.green.shade700,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Total Days: $numberOfDays',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: numberOfDays > availableBalance && selectedLeaveType != null
-                                          ? Colors.red.shade900
-                                          : Colors.green.shade900,
-                                    ),
-                                  ),
-                                  if (numberOfDays > availableBalance && selectedLeaveType != null)
-                                    Text(
-                                      'Exceeds available balance!',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.red.shade700,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-
                     const SizedBox(height: 16),
-                    // Reason
                     TextFormField(
                       controller: reasonController,
                       decoration: InputDecoration(
@@ -533,41 +342,11 @@ class _LeavePageState extends State<LeavePage> {
     String reason,
   ) async {
     if (!formKey.currentState!.validate()) return;
-    
-    if (leaveType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a leave type'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    
-    if (startDate == null || endDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select both start and end dates'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (_userId == null || _organizationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('User information not available'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
+    if (leaveType == null || startDate == null || endDate == null) return;
+    if (_userId == null || _organizationId == null) return;
     try {
       final numberOfDays = endDate.difference(startDate).inDays + 1;
       final user = _authService.currentUser;
-      
       final request = LeaveRequest(
         userId: _userId!,
         userName: user?.displayName ?? user?.email ?? 'Unknown',
@@ -580,9 +359,7 @@ class _LeavePageState extends State<LeavePage> {
         reason: reason.trim(),
         createdAt: DateTime.now(),
       );
-
-      await _leaveService.submitLeaveRequest(request);
-
+      await _leaveService.submitUserLeaveRequest(_userId!, request);
       if (context.mounted) {
         Navigator.pop(dialogContext);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -591,9 +368,7 @@ class _LeavePageState extends State<LeavePage> {
             backgroundColor: Colors.green,
           ),
         );
-        
-        // Refresh balances
-        await _loadLeaveBalances();
+        await _loadUserData();
       }
     } catch (e) {
       if (context.mounted) {
@@ -611,14 +386,12 @@ class _LeavePageState extends State<LeavePage> {
     if (_userId == null) {
       return const Center(child: CircularProgressIndicator());
     }
-
     return StreamBuilder<List<LeaveRequest>>(
-      stream: _leaveService.getUserLeaveRequests(_userId!),
+      stream: _leaveService.getUserLeavesStream(_userId!),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-
         if (snapshot.hasError) {
           return Center(
             child: Padding(
@@ -631,9 +404,7 @@ class _LeavePageState extends State<LeavePage> {
             ),
           );
         }
-
         final requests = snapshot.data ?? [];
-
         if (requests.isEmpty) {
           return Center(
             child: Column(
@@ -654,7 +425,6 @@ class _LeavePageState extends State<LeavePage> {
             ),
           );
         }
-
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           itemCount: requests.length,
@@ -667,11 +437,6 @@ class _LeavePageState extends State<LeavePage> {
   }
 
   Widget _buildRequestCard(LeaveRequest request) {
-    final leaveType = LeaveType.defaultTypes.firstWhere(
-      (t) => t.id == request.leaveTypeId,
-      orElse: () => LeaveType.defaultTypes.first,
-    );
-
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -683,27 +448,8 @@ class _LeavePageState extends State<LeavePage> {
           children: [
             Row(
               children: [
-                Text(leaveType.icon, style: const TextStyle(fontSize: 32)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        request.leaveTypeName,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${request.numberOfDays} ${request.numberOfDays == 1 ? 'day' : 'days'}',
-                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ),
+                Text(request.leaveTypeName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -728,7 +474,7 @@ class _LeavePageState extends State<LeavePage> {
                 Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
                 const SizedBox(width: 8),
                 Text(
-                  '${_formatDate(request.startDate)} - ${_formatDate(request.endDate)}',
+                  '${DateFormat('dd/MM/yyyy').format(request.startDate)} - ${DateFormat('dd/MM/yyyy').format(request.endDate)}',
                   style: TextStyle(fontSize: 13, color: Colors.grey[700]),
                 ),
               ],
@@ -790,7 +536,7 @@ class _LeavePageState extends State<LeavePage> {
                 Icon(Icons.access_time, size: 14, color: Colors.grey[500]),
                 const SizedBox(width: 4),
                 Text(
-                  'Submitted on ${_formatDate(request.createdAt)}',
+                  'Submitted on ${DateFormat('dd/MM/yyyy').format(request.createdAt)}',
                   style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
               ],
@@ -799,9 +545,5 @@ class _LeavePageState extends State<LeavePage> {
         ),
       ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
   }
 }

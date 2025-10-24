@@ -9,40 +9,44 @@ service cloud.firestore {
     
     // ... existing rules ...
     
-    // Leave Requests Collection
-    match /leave_requests/{requestId} {
-      // Allow users to read their own leave requests
-      allow read: if request.auth != null && 
-                     (resource.data.userId == request.auth.uid || 
-                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager']);
-      
-      // Allow users to create their own leave requests
-      allow create: if request.auth != null && 
-                       request.resource.data.userId == request.auth.uid &&
-                       request.resource.data.organizationId is string &&
-                       request.resource.data.leaveTypeId is string &&
-                       request.resource.data.startDate is timestamp &&
-                       request.resource.data.endDate is timestamp &&
-                       request.resource.data.numberOfDays is number &&
-                       request.resource.data.reason is string &&
-                       request.resource.data.status == 'pending' &&
-                       request.resource.data.createdAt is timestamp;
-      
-      // Allow users to cancel their own pending requests
-      allow update: if request.auth != null && 
-                       resource.data.userId == request.auth.uid &&
-                       resource.data.status == 'pending' &&
-                       request.resource.data.status == 'cancelled';
-      
-      // Allow admins/managers to update any leave request (approve/reject)
-      allow update: if request.auth != null && 
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'] &&
-                       request.resource.data.status in ['approved', 'rejected'] &&
-                       request.resource.data.reviewedBy == request.auth.uid &&
-                       request.resource.data.reviewedAt is timestamp;
-      
-      // Prevent deletion of leave requests (for audit trail)
-      allow delete: if false;
+    // Users collection with leave subcollection
+    match /users/{userId} {
+      // Leave subcollection for each user
+      match /leaves/{leaveId} {
+        // Allow users to read their own leave requests
+        allow read: if request.auth != null && 
+                       (request.auth.uid == userId || 
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager']);
+        
+        // Allow users to create their own leave requests
+        allow create: if request.auth != null && 
+                         request.auth.uid == userId &&
+                         request.resource.data.userId == userId &&
+                         request.resource.data.organizationId is string &&
+                         request.resource.data.leaveTypeId is string &&
+                         request.resource.data.startDate is timestamp &&
+                         request.resource.data.endDate is timestamp &&
+                         request.resource.data.numberOfDays is number &&
+                         request.resource.data.reason is string &&
+                         request.resource.data.status == 'pending' &&
+                         request.resource.data.createdAt is timestamp;
+        
+        // Allow users to cancel their own pending requests
+        allow update: if request.auth != null && 
+                         request.auth.uid == userId &&
+                         resource.data.status == 'pending' &&
+                         request.resource.data.status == 'cancelled';
+        
+        // Allow admins/managers to update any leave request (approve/reject)
+        allow update: if request.auth != null && 
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'] &&
+                         request.resource.data.status in ['approved', 'rejected'] &&
+                         request.resource.data.reviewedBy == request.auth.uid &&
+                         request.resource.data.reviewedAt is timestamp;
+        
+        // Prevent deletion of leave requests (for audit trail)
+        allow delete: if false;
+      }
     }
   }
 }
