@@ -767,6 +767,10 @@ class _SchedulePageState extends State<SchedulePage> {
     print('[SchedulePage] users: $users');
     print('[SchedulePage] title: $title');
 
+    // Format times as "HH:mm"
+    final startTimeStr = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
+    final endTimeStr = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
+
     final stream = _scheduler.createSchedulesBatch(
       organizationId: _organizationId!,
       createdBy: createdBy,
@@ -775,13 +779,17 @@ class _SchedulePageState extends State<SchedulePage> {
       startDate: _startDate!,
       recurrence: recurrence,
       selectedDays: _selectedDays.isEmpty ? null : _selectedDays,
+      startTime: startTimeStr,
+      endTime: endTimeStr,
     );
 
     setState(() => _progressStream = stream);
 
     stream.listen(
       (evt) {
-        print('[SchedulePage] Progress: ${evt.completed}/${evt.total} - ${evt.message}');
+        print(
+          '[SchedulePage] Progress: ${evt.completed}/${evt.total} - ${evt.message}',
+        );
         setState(() {
           _completed = evt.completed;
           _total = evt.total;

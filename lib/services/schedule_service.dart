@@ -34,11 +34,13 @@ class ScheduleService {
     required DateTime startDate,
     required Recurrence recurrence,
     Set<int>? selectedDays, // 1=Mon, 7=Sun; only used if recurrence=weekly
+    String? startTime, // Format: "HH:mm"
+    String? endTime, // Format: "HH:mm"
   }) async* {
     final endOfYear = DateTime(startDate.year, 12, 31);
     final dates = <DateTime>[];
     var current = DateTime(startDate.year, startDate.month, startDate.day);
-    
+
     // For non-recurring, just add the start date
     if (recurrence == Recurrence.none) {
       dates.add(current);
@@ -68,9 +70,13 @@ class ScheduleService {
     }
 
     print('[ScheduleService] Generated ${dates.length} dates for scheduling');
-    print('[ScheduleService] First 5 dates: ${dates.take(5).map((d) => _fmt(d)).join(", ")}');
+    print(
+      '[ScheduleService] First 5 dates: ${dates.take(5).map((d) => _fmt(d)).join(", ")}',
+    );
     if (dates.length > 5) {
-      print('[ScheduleService] Last 5 dates: ${dates.skip(dates.length - 5).map((d) => _fmt(d)).join(", ")}');
+      print(
+        '[ScheduleService] Last 5 dates: ${dates.skip(dates.length - 5).map((d) => _fmt(d)).join(", ")}',
+      );
     }
 
     int total = dates.length * userIds.length;
@@ -96,6 +102,8 @@ class ScheduleService {
             userId: userId,
             title: title,
             date: date,
+            startTime: startTime,
+            endTime: endTime,
             createdBy: createdBy,
             createdAt: DateTime.now(),
           );
