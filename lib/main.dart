@@ -4,17 +4,20 @@ import 'firebase_options.dart';
 import 'splash_screen.dart';
 import 'auth_wrapper.dart';
 import 'services/auth_service.dart';
+import 'services/leave_service.dart';
+import 'services/firestore_service.dart';
 import 'pages/projects_page.dart';
 import 'pages/users_page.dart';
 import 'pages/invitation_signup_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/locations_page.dart';
-import 'pages/leave_page.dart';
 import 'pages/requests_page.dart';
 import 'pages/schedule_page.dart';
 import 'settings/settings_controller.dart';
 import 'widgets/shift_calendar_widget.dart';
+import 'models/leave_request.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,7 +66,6 @@ class MayoraApp extends StatelessWidget {
             '/invitation-signup': (context) => const InvitationSignUpPage(),
             '/settings': (context) => const SettingsPage(),
             '/locations': (context) => const LocationsPage(),
-            '/leaves': (context) => const LeavePage(),
             '/requests': (context) => const RequestsPage(),
             '/schedules': (context) => const SchedulePage(),
           },
@@ -83,14 +85,9 @@ class MayoraHomePage extends StatefulWidget {
 }
 
 class _MayoraHomePageState extends State<MayoraHomePage> {
-  int _counter = 0;
   final AuthService _authService = AuthService();
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
+  final LeaveService _leaveService = LeaveService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   String get _userName {
     final user = _authService.currentUser;
@@ -98,6 +95,274 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
       return user.displayName ?? user.email?.split('@')[0] ?? 'User';
     }
     return 'User';
+  }
+
+  void _showLeaveRequestDialog() async {
+    final user = _authService.currentUser;
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please sign in to request leave'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final userId = user.uid;
+    final organizationId = await _firestoreService
+        .getCurrentUserOrganizationId();
+
+    if (organizationId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to load organization data'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final formKey = GlobalKey<FormState>();
+    LeaveType? selectedLeaveType;
+    DateTime? startDate;
+    DateTime? endDate;
+    final reasonController = TextEditingController();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text(
+              'Apply for Leave',
+              style: TextStyle(fontSize: 18),
+            ),
+            content: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<LeaveType>(
+                      value: selectedLeaveType,
+                      decoration: InputDecoration(
+                        labelText: 'Type of Leave *',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      items: LeaveType.defaultTypes.map((leaveType) {
+                        return DropdownMenuItem(
+                          value: leaveType,
+                          child: Text(leaveType.name),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedLeaveType = value;
+                        });
+                      },
+                      validator: (value) =>
+                          value == null ? 'Select leave type' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365),
+                          ),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            startDate = picked;
+                            if (endDate != null && endDate!.isBefore(picked)) {
+                              endDate = picked;
+                            }
+                          });
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Start Date *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          suffixIcon: const Icon(Icons.calendar_today),
+                        ),
+                        child: Text(
+                          startDate != null
+                              ? DateFormat('dd/MM/yyyy').format(startDate!)
+                              : 'Select start date',
+                          style: TextStyle(
+                            color: startDate != null
+                                ? Colors.black87
+                                : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: startDate == null
+                          ? null
+                          : () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: startDate!,
+                                firstDate: startDate!,
+                                lastDate: DateTime.now().add(
+                                  const Duration(days: 365),
+                                ),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  endDate = picked;
+                                });
+                              }
+                            },
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'End Date *',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          suffixIcon: const Icon(Icons.calendar_today),
+                          enabled: startDate != null,
+                        ),
+                        child: Text(
+                          endDate != null
+                              ? DateFormat('dd/MM/yyyy').format(endDate!)
+                              : 'Select end date',
+                          style: TextStyle(
+                            color: endDate != null
+                                ? Colors.black87
+                                : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: reasonController,
+                      decoration: InputDecoration(
+                        labelText: 'Reason *',
+                        hintText: 'Explain your leave request...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        alignLabelWithHint: true,
+                      ),
+                      maxLines: 3,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please provide a reason';
+                        }
+                        if (value.trim().length < 10) {
+                          return 'Reason must be at least 10 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => _submitLeaveRequest(
+                  dialogContext,
+                  formKey,
+                  selectedLeaveType,
+                  startDate,
+                  endDate,
+                  reasonController.text,
+                  userId,
+                  organizationId,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2962FF),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Submit'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _submitLeaveRequest(
+    BuildContext dialogContext,
+    GlobalKey<FormState> formKey,
+    LeaveType? leaveType,
+    DateTime? startDate,
+    DateTime? endDate,
+    String reason,
+    String userId,
+    String organizationId,
+  ) async {
+    if (!formKey.currentState!.validate()) return;
+    if (leaveType == null || startDate == null || endDate == null) return;
+
+    try {
+      final numberOfDays = endDate.difference(startDate).inDays + 1;
+      final user = _authService.currentUser;
+      final request = LeaveRequest(
+        userId: userId,
+        userName: user?.displayName ?? user?.email ?? 'Unknown',
+        organizationId: organizationId,
+        leaveTypeId: leaveType.id,
+        leaveTypeName: leaveType.name,
+        startDate: startDate,
+        endDate: endDate,
+        numberOfDays: numberOfDays,
+        reason: reason.trim(),
+        createdAt: DateTime.now(),
+      );
+
+      await _leaveService.submitUserLeaveRequest(userId, request);
+
+      if (dialogContext.mounted) {
+        Navigator.pop(dialogContext);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Leave request submitted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Reload the calendar to show the new leave request
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error submitting request: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -165,75 +430,14 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
             const ShiftCalendarWidget(),
 
             const SizedBox(height: 20),
-
-            // Mock dashboard cards
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildDashboardCard(
-                      context,
-                      'Projects',
-                      '12',
-                      Icons.folder_outlined,
-                      Colors.blue,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildDashboardCard(
-                      context,
-                      'Tasks',
-                      '34',
-                      Icons.task_alt,
-                      Colors.green,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildDashboardCard(
-                      context,
-                      'Team',
-                      '8',
-                      Icons.people_outline,
-                      Colors.orange,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildDashboardCard(
-                      context,
-                      'Messages',
-                      '5',
-                      Icons.message_outlined,
-                      Colors.purple,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-            const Text('Counter Demo:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 20),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showLeaveRequestDialog,
+        tooltip: 'Request Leave',
+        icon: const Icon(Icons.add),
+        label: const Text('Request Leave'),
       ),
     );
   }
@@ -297,19 +501,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                   title: const Text('Home'),
                   onTap: () {
                     Navigator.pop(context);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_today),
-                  title: const Text('Leave Requests'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const LeavePage(),
-                      ),
-                    );
                   },
                 ),
                 const Divider(),
@@ -478,54 +669,6 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
             },
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDashboardCard(
-    BuildContext context,
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-            ),
-          ],
-        ),
       ),
     );
   }
