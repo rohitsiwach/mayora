@@ -14,11 +14,18 @@ class _UsersPageState extends State<UsersPage>
     with SingleTickerProviderStateMixin {
   final FirestoreService _firestoreService = FirestoreService();
   late TabController _tabController;
+  late Stream<QuerySnapshot> _usersStream;
+  late Stream<QuerySnapshot> _invitationsStream;
+  late Stream<QuerySnapshot> _userGroupsStream;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // Cache streams to prevent multiple listeners
+    _usersStream = _firestoreService.getRegisteredUsers();
+    _invitationsStream = _firestoreService.getUserInvitations();
+    _userGroupsStream = _firestoreService.getUserGroups();
   }
 
   @override
@@ -65,7 +72,7 @@ class _UsersPageState extends State<UsersPage>
 
   Widget _buildUsersTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getRegisteredUsers(),
+      stream: _usersStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return _buildErrorState('Error loading users', snapshot.error);
@@ -94,7 +101,7 @@ class _UsersPageState extends State<UsersPage>
 
   Widget _buildInvitationsTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getUserInvitations(),
+      stream: _invitationsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return _buildErrorState('Error loading invitations', snapshot.error);
@@ -123,7 +130,7 @@ class _UsersPageState extends State<UsersPage>
 
   Widget _buildUserGroupsTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getUserGroups(),
+      stream: _userGroupsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return _buildErrorState('Error loading user groups', snapshot.error);
