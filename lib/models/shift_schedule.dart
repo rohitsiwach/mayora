@@ -32,10 +32,10 @@ class ShiftSchedule {
       'createdBy': createdBy,
       'createdAt': Timestamp.fromDate(createdAt),
     };
-    
+
     if (startTime != null) map['startTime'] = startTime!;
     if (endTime != null) map['endTime'] = endTime!;
-    
+
     return map;
   }
 

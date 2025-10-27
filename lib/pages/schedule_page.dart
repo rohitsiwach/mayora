@@ -768,8 +768,10 @@ class _SchedulePageState extends State<SchedulePage> {
     print('[SchedulePage] title: $title');
 
     // Format times as "HH:mm"
-    final startTimeStr = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
-    final endTimeStr = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
+    final startTimeStr =
+        '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
+    final endTimeStr =
+        '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
 
     final stream = _scheduler.createSchedulesBatch(
       organizationId: _organizationId!,
