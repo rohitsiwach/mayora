@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firestore_service.dart';
@@ -22,10 +22,12 @@ class _UsersPageState extends State<UsersPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // Cache streams to prevent multiple listeners
-    _usersStream = _firestoreService.getRegisteredUsers();
-    _invitationsStream = _firestoreService.getUserInvitations();
-    _userGroupsStream = _firestoreService.getUserGroups();
+    // Cache streams as broadcast to allow multiple listeners
+    _usersStream = _firestoreService.getRegisteredUsers().asBroadcastStream();
+    _invitationsStream = _firestoreService
+        .getUserInvitations()
+        .asBroadcastStream();
+    _userGroupsStream = _firestoreService.getUserGroups().asBroadcastStream();
   }
 
   @override
@@ -84,7 +86,19 @@ class _UsersPageState extends State<UsersPage>
           );
         }
 
-        final users = snapshot.data?.docs ?? [];
+        final allUsers = snapshot.data?.docs ?? [];
+
+        // Remove duplicates based on email
+        final seenEmails = <String>{};
+        final users = allUsers.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final email = data['email'] as String?;
+          if (email == null || seenEmails.contains(email)) {
+            return false;
+          }
+          seenEmails.add(email);
+          return true;
+        }).toList();
 
         if (users.isEmpty) {
           return _buildEmptyState(
@@ -113,7 +127,19 @@ class _UsersPageState extends State<UsersPage>
           );
         }
 
-        final invitations = snapshot.data?.docs ?? [];
+        final allInvitations = snapshot.data?.docs ?? [];
+
+        // Remove duplicates based on email
+        final seenEmails = <String>{};
+        final invitations = allInvitations.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final email = data['email'] as String?;
+          if (email == null || seenEmails.contains(email)) {
+            return false;
+          }
+          seenEmails.add(email);
+          return true;
+        }).toList();
 
         if (invitations.isEmpty) {
           return _buildEmptyState(
