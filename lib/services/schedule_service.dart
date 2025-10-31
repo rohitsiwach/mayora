@@ -1,17 +1,21 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/shift_schedule.dart';
 import 'leave_service.dart';
+import 'hierarchical_firestore_service.dart';
 
 class ScheduleService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final LeaveService _leaveService = LeaveService();
+  final HierarchicalFirestoreService _hierarchical =
+      HierarchicalFirestoreService();
 
-  /// Create a schedule document under users/{userId}/schedules
-  Future<void> createSchedule(ShiftSchedule schedule) async {
-    final userRef = _firestore
-        .collection('users')
-        .doc(schedule.userId)
-        .collection('schedules');
+  /// Create a schedule document under organizations/{orgId}/users/{userId}/schedules
+  Future<void> createSchedule(
+    String organizationId,
+    ShiftSchedule schedule,
+  ) async {
+    final userRef = _hierarchical.schedulesCollection(
+      organizationId,
+      schedule.userId,
+    );
 
     // Deterministic ID for idempotency: yyyyMMdd
     final keyDate = DateTime(
@@ -85,7 +89,11 @@ class ScheduleService {
     for (final date in dates) {
       for (final userId in userIds) {
         try {
-          final conflict = await _leaveService.hasApprovedLeaveOn(userId, date);
+          final conflict = await _leaveService.hasApprovedLeaveOn(
+            organizationId,
+            userId,
+            date,
+          );
           if (conflict) {
             completed++;
             yield SchedulingProgress(
@@ -107,7 +115,7 @@ class ScheduleService {
             createdBy: createdBy,
             createdAt: DateTime.now(),
           );
-          await createSchedule(schedule);
+          await createSchedule(organizationId, schedule);
           completed++;
           yield SchedulingProgress(
             completed: completed,

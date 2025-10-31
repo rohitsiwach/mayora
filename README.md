@@ -207,3 +207,56 @@ flutter test
 - [Flutter Documentation](https://docs.flutter.dev/)
 - [Dart Documentation](https://dart.dev/guides)
 - [Material Design](https://material.io/design)
+
+## Data maintenance: Merge duplicate user docs
+
+If you ever end up with two user documents for the same person (for example, one document with profile fields and another that has `leaves/` and `schedules/` subcollections), you can merge them into a single canonical doc using the script in `scripts/`.
+
+Canonical convention: the user document ID should be the Firebase Auth UID.
+
+### Steps (Windows PowerShell)
+
+1) Install Node deps for the script
+
+```powershell
+cd scripts
+npm install
+```
+
+2) Authenticate Admin SDK (choose one)
+
+- Use Application Default Credentials via gcloud:
+
+```powershell
+gcloud auth application-default login
+```
+
+- Or set a service account key file:
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS = "C:\\path\\to\\service-account.json"
+```
+
+3) Run the merge
+
+```powershell
+# Syntax
+npm run merge-user -- <SOURCE_USER_ID> <TARGET_USER_ID> [--dry-run] [--no-delete]
+
+# Example (copy everything from source -> target and delete source afterwards)
+npm run merge-user -- Wq4GEPHEpw5xHCldqJfC HJkd7luti8gadiikYvk5KLlOVXm1
+
+# Example dry run (no writes)
+npm run merge-user -- Wq4GEPHEpw5xHCldqJfC HJkd7luti8gadiikYvk5KLlOVXm1 --dry-run
+
+# Keep the source doc and its subcollections (no deletion)
+npm run merge-user -- Wq4GEPHEpw5xHCldqJfC HJkd7luti8gadiikYvk5KLlOVXm1 --no-delete
+```
+
+What it does:
+- Merges top-level fields from source into target using `{ merge: true }`
+- Copies all subcollections (including `leaves/` and `schedules/`) from source to target
+- Normalizes `userId` field in copied data to the target ID
+- Optionally deletes the source subcollections and source document (omit with `--no-delete`)
+
+After merging, update any app code that creates users to always write to `users/{auth.uid}` to prevent duplicates.

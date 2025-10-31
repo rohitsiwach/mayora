@@ -1,25 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/work_location.dart';
+import 'hierarchical_firestore_service.dart';
 
 class LocationSettingsService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // Location Settings Keys
-  static const String _settingsCollection = 'location_settings';
-  static const String _locationsCollection = 'work_locations';
+  final HierarchicalFirestoreService _hierarchical =
+      HierarchicalFirestoreService();
 
   /// Get location settings for an organization
   Future<Map<String, dynamic>> getLocationSettings(
     String organizationId,
   ) async {
     try {
-      final doc = await _firestore
-          .collection(_settingsCollection)
+      // Read org-scoped settings doc under: organizations/{orgId}/location_settings/{orgId}
+      final doc = await _hierarchical
+          .locationSettingsCollection(organizationId)
           .doc(organizationId)
           .get();
 
       if (doc.exists) {
-        return doc.data() ?? _defaultSettings();
+        final data = doc.data() as Map<String, dynamic>?;
+        return data ?? _defaultSettings();
       }
       return _defaultSettings();
     } catch (e) {
@@ -34,10 +34,15 @@ class LocationSettingsService {
     Map<String, dynamic> settings,
   ) async {
     try {
-      await _firestore.collection(_settingsCollection).doc(organizationId).set({
-        ...settings,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      // Write org-scoped settings doc under: organizations/{orgId}/location_settings/{orgId}
+      await _hierarchical
+          .locationSettingsCollection(organizationId)
+          .doc(organizationId)
+          .set({
+            ...settings,
+            'organizationId': organizationId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
     } catch (e) {
       print('Error updating location settings: $e');
       rethrow;
@@ -46,14 +51,18 @@ class LocationSettingsService {
 
   /// Get all work locations for an organization
   Stream<List<WorkLocation>> getWorkLocations(String organizationId) {
-    return _firestore
-        .collection(_locationsCollection)
-        .where('organizationId', isEqualTo: organizationId)
+    return _hierarchical
+        .workLocationsCollection(organizationId)
         .snapshots()
         .map((snapshot) {
           // Sort locations by name in-memory instead of using Firestore orderBy
           final locations = snapshot.docs
-              .map((doc) => WorkLocation.fromMap(doc.data(), doc.id))
+              .map(
+                (doc) => WorkLocation.fromMap(
+                  doc.data() as Map<String, dynamic>,
+                  doc.id,
+                ),
+              )
               .toList();
 
           // Sort by name alphabetically
@@ -66,11 +75,14 @@ class LocationSettingsService {
   /// Add a new work location
   Future<String> addWorkLocation(WorkLocation location) async {
     try {
-      final docRef = await _firestore.collection(_locationsCollection).add({
-        ...location.toMap(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      final docRef = await _hierarchical
+          .workLocationsCollection(location.organizationId)
+          .add({
+            ...location.toMap(),
+            'organizationId': location.organizationId,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
       return docRef.id;
     } catch (e) {
       print('Error adding work location: $e');
@@ -85,9 +97,14 @@ class LocationSettingsService {
     }
 
     try {
-      await _firestore.collection(_locationsCollection).doc(location.id).update(
-        {...location.toMap(), 'updatedAt': FieldValue.serverTimestamp()},
-      );
+      await _hierarchical
+          .workLocationsCollection(location.organizationId)
+          .doc(location.id)
+          .update({
+            ...location.toMap(),
+            'organizationId': location.organizationId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       print('Error updating work location: $e');
       rethrow;
@@ -95,10 +112,13 @@ class LocationSettingsService {
   }
 
   /// Delete a work location
-  Future<void> deleteWorkLocation(String locationId) async {
+  Future<void> deleteWorkLocation(
+    String organizationId,
+    String locationId,
+  ) async {
     try {
-      await _firestore
-          .collection(_locationsCollection)
+      await _hierarchical
+          .workLocationsCollection(organizationId)
           .doc(locationId)
           .delete();
     } catch (e) {

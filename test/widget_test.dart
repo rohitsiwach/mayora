@@ -7,51 +7,47 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:firebase_core/firebase_core.dart';
+import 'package:mayora/firebase_options.dart';
 import 'package:mayora/main.dart';
 
 void main() {
-  testWidgets('Mayora app loads correctly', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  Future<void> _initFirebase() async {
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } catch (_) {
+      // ignore if already initialized in a previous test run
+    }
+  }
+
+  testWidgets('Mayora boots to Sign In for unauthenticated users', (
+    WidgetTester tester,
+  ) async {
+    await _initFirebase();
+
     await tester.pumpWidget(const MayoraApp());
+    // Allow the auth stream to emit and UI to settle
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
 
-    // Wait for splash screen animation to complete
-    await tester.pumpAndSettle(const Duration(seconds: 4));
-
-    // Verify that we're on the home page with counter at 0
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-    expect(find.text('Welcome to Mayora!'), findsOneWidget);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Expect sign-in screen content
+    expect(find.text('Welcome Back!'), findsOneWidget);
+    expect(find.text('Sign in to continue to Mayora'), findsOneWidget);
   });
 
-  testWidgets('Mayora home page direct test', (WidgetTester tester) async {
-    // Test the home page directly without splash screen
-    await tester.pumpWidget(
-      MaterialApp(
-        home: const MayoraHomePage(title: 'Mayora'),
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF673AB7)),
-        ),
-      ),
-    );
+  testWidgets('Mayora MaterialApp renders without crashing', (
+    WidgetTester tester,
+  ) async {
+    await _initFirebase();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('Welcome to Mayora!'), findsOneWidget);
+    await tester.pumpWidget(const MayoraApp());
+    await tester.pump(const Duration(milliseconds: 100));
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('1'), findsOneWidget);
+    // We should at least have a MaterialApp in the tree
+    expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

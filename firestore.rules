@@ -2,177 +2,267 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Organizations collection - allow anyone to create (for signup)
-    match /organizations/{organizationId} {
-      // Allow anyone to create (needed for signup)
-      allow create: if request.auth != null;
-      
-      // Allow authenticated users to read
-      allow read: if request.auth != null;
-      
-      // Allow organization admin to update
-      allow update: if request.auth != null;
+    // Helper function: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
     }
     
-    // Projects collection - organization-scoped access
-    match /projects/{projectId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null;
+    // Helper function: Check if user belongs to the organization
+    function isOrgMember(orgId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid));
     }
     
-    // User invitations - organization-scoped with public read for validation
-    match /user_invitations/{invitationId} {
-      // Allow anyone to read for code validation during signup
+    // Helper function: Check if user is admin or manager in the organization
+    function isOrgAdminOrManager(orgId) {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'];
+    }
+
+    // Helper function: Check if user is the organization admin by org doc
+    function isOrgAdmin(orgId) {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/organizations/$(orgId)).data.adminUserId == request.auth.uid;
+    }
+
+    // === COLLECTION GROUP QUERIES ===
+    // These rules apply to collectionGroup() queries that span multiple parent paths
+    
+    // Allow anyone to read invitations via collectionGroup (for code validation during signup)
+    match /{path=**}/user_invitations/{invitationId} {
       allow read: if true;
-      
-      // Allow deletion (needed when invitation is accepted)
-      allow delete: if true;
-      
-      // Allow authenticated users to create/update invitations
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
     }
     
-    // Location settings
-    match /location_settings/{organizationId} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
-    }
-    
-    // Work locations
-    match /work_locations/{locationId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null;
-    }
-
-    // Organization schedules (management)
-    match /organizations/{organizationId}/schedules/{scheduleId} {
-      // Read: Admin/Manager in same organization
-      allow read: if request.auth != null &&
-                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == organizationId &&
-                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'];
-
-      // Create: Admin/Manager in same organization, with valid fields
-      allow create: if request.auth != null &&
-                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == organizationId &&
-                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'] &&
-                      request.resource.data.organizationId == organizationId &&
-                      request.resource.data.userId is string &&
-                      request.resource.data.title is string &&
-                      request.resource.data.date is timestamp &&
-                      request.resource.data.createdBy == request.auth.uid &&
-                      request.resource.data.createdAt is timestamp;
-
-      // Update/Delete: Admin/Manager within org
-      allow update, delete: if request.auth != null &&
-                               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == organizationId &&
-                               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'];
-    }
-    
-    // Users collection - organization-scoped access
-    match /users/{userId} {
-      // Allow authenticated users to read
-      allow read: if request.auth != null;
-      
-      // Allow anyone to create (needed for signup and invitation acceptance)
-      allow create: if true;
-      
-      // Allow authenticated users to update
-      allow update: if request.auth != null;
-      
-      // Leave subcollection for each user
-      match /leaves/{leaveId} {
-        // Allow users to read their own leave requests
-        allow read: if request.auth != null && 
-                       (
-                         // Owner can read own leaves
-                         request.auth.uid == userId || 
-                         // Admin/Manager can read leaves within their organization only
-                         (
-                           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'] &&
-                           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId
-                         )
-                       );
-        
-        // Allow users to create their own leave requests
-        allow create: if request.auth != null && 
-                         request.auth.uid == userId &&
-                         request.resource.data.userId == userId &&
-                         request.resource.data.organizationId is string &&
-                         request.resource.data.leaveTypeId is string &&
-                         request.resource.data.startDate is timestamp &&
-                         request.resource.data.endDate is timestamp &&
-                         request.resource.data.numberOfDays is number &&
-                         request.resource.data.reason is string &&
-                         request.resource.data.status == 'pending' &&
-                         request.resource.data.createdAt is timestamp;
-        
-        // Allow users to cancel their own pending requests
-        allow update: if request.auth != null && 
-                         request.auth.uid == userId &&
-                         resource.data.status == 'pending' &&
-                         request.resource.data.status == 'cancelled';
-        
-        // Allow admins/managers to update any leave request (approve/reject)
-  allow update: if request.auth != null && 
-       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'] &&
-       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId &&
-                         request.resource.data.status in ['approved', 'rejected'] &&
-                         request.resource.data.reviewedBy == request.auth.uid &&
-                         request.resource.data.reviewedAt is timestamp;
-        
-        // Prevent deletion of leave requests (for audit trail)
-        allow delete: if false;
-      }
-
-      // Schedule subcollection for each user
-      match /schedules/{scheduleId} {
-        // Allow users to read their own schedules
-        allow read: if request.auth != null && request.auth.uid == userId;
-
-        // Allow Admin/Manager to create schedules for users in their organization
-        allow create: if request.auth != null &&
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'] &&
-                        request.resource.data.userId == userId &&
-                        request.resource.data.title is string &&
-                        request.resource.data.organizationId is string &&
-                        request.resource.data.date is timestamp &&
-                        request.resource.data.createdBy == request.auth.uid &&
-                        request.resource.data.createdAt is timestamp;
-
-        // Allow admins/managers to update/delete schedules
-        allow update, delete: if request.auth != null &&
-                                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'];
-      }
-    }
-
-    // Wildcard rule to support collection group queries on any `leaves` subcollection
+    // Allow admins/managers to query leaves across all users in their org
     match /{path=**}/leaves/{leaveId} {
-      // Allow users to read their own leave requests
-      allow read: if request.auth != null && 
-                     (
-                       request.auth.uid == resource.data.userId ||
-                       (
-                         // Admin/Manager can read leaves within their organization only
-                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'] &&
-                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId
-                       )
-                     );
+      allow read: if isAuthenticated() &&
+                     resource.data.organizationId is string &&
+                     (isOrgMember(resource.data.organizationId) || 
+                      isOrgAdmin(resource.data.organizationId));
+    }
+    
+    // Organizations collection - top level
+    match /organizations/{orgId} {
+      // Allow authenticated users to read org details if they're a member
+      // Also allow reading if the user is the org admin (based on adminUserId)
+      // This enables onboarding flows before the admin profile is added under org/users
+      allow read: if isOrgMember(orgId) ||
+                  (isAuthenticated() &&
+                   resource.data.adminUserId != null &&
+                   resource.data.adminUserId == request.auth.uid);
+      
+      // Allow anyone to create (for signup)
+      allow create: if isAuthenticated();
+      
+      // Allow admins to update
+      allow update: if isOrgAdminOrManager(orgId);
 
-      // Allow admins/managers to update any leave request (approve/reject) within their org
-      allow update: if request.auth != null &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel in ['Admin', 'Manager'] &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId &&
-                       request.resource.data.status in ['approved', 'rejected'] &&
-                       request.resource.data.reviewedBy == request.auth.uid &&
-                       request.resource.data.reviewedAt is timestamp;
+      // === USER_INVITATIONS subcollection (org-scoped) ===
+      match /user_invitations/{invitationId} {
+        // Public read so signup can validate codes via collectionGroup
+        allow read: if true;
 
-      // Prevent deletion of leave requests (for audit trail)
+        // Allow org members OR org admin (based on org doc) to create invitations
+        // Ensure inviter is the authenticated user
+        allow create: if (isOrgMember(orgId) || isOrgAdmin(orgId)) &&
+                       request.resource.data.invitedBy == request.auth.uid;
+
+        // Allow updates/deletes by org members or org admin
+        allow update, delete: if isOrgMember(orgId) || isOrgAdmin(orgId);
+      }
+      
+      // === USERS subcollection ===
+      match /users/{userId} {
+        // Any org member can read other members' profiles
+        allow read: if isOrgMember(orgId);
+        
+        // Allow creation during signup/invitation
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        
+        // Users can update their own profile, admins can update anyone
+        allow update: if isAuthenticated() && 
+                         (request.auth.uid == userId || isOrgAdminOrManager(orgId));
+        
+        // Only admins can delete users
+        allow delete: if isOrgAdminOrManager(orgId);
+        
+        // SCHEDULES subcollection
+        match /schedules/{scheduleId} {
+          // Any org member can read schedules (for viewing colleagues' schedules)
+          allow read: if isOrgMember(orgId);
+          
+          // Admin/Manager can create schedules
+          allow create: if isOrgAdminOrManager(orgId) &&
+                          request.resource.data.userId == userId &&
+                          request.resource.data.title is string &&
+                          request.resource.data.organizationId == orgId &&
+                          request.resource.data.date is timestamp &&
+                          request.resource.data.createdBy == request.auth.uid &&
+                          request.resource.data.createdAt is timestamp;
+          
+          // Admin/Manager can update/delete schedules
+          allow update, delete: if isOrgAdminOrManager(orgId);
+        }
+        
+        // LEAVES subcollection
+        match /leaves/{leaveId} {
+          // Any org member can read leaves (for viewing colleagues' leaves)
+          allow read: if isOrgMember(orgId);
+          
+          // Users can create their own leave requests
+          allow create: if isAuthenticated() && 
+                          request.auth.uid == userId &&
+                          request.resource.data.userId == userId &&
+                          request.resource.data.organizationId == orgId &&
+                          request.resource.data.leaveTypeId is string &&
+                          request.resource.data.startDate is timestamp &&
+                          request.resource.data.endDate is timestamp &&
+                          request.resource.data.numberOfDays is number &&
+                          request.resource.data.reason is string &&
+                          request.resource.data.status == 'pending' &&
+                          request.resource.data.createdAt is timestamp;
+          
+          // Users can cancel their own pending requests
+          allow update: if isAuthenticated() && 
+                          request.auth.uid == userId &&
+                          resource.data.status == 'pending' &&
+                          request.resource.data.status == 'cancelled';
+          
+          // Admins/managers can approve/reject leave requests
+          allow update: if isOrgAdminOrManager(orgId) &&
+                          request.resource.data.status in ['approved', 'rejected'] &&
+                          request.resource.data.reviewedBy == request.auth.uid &&
+                          request.resource.data.reviewedAt is timestamp;
+          
+          // Prevent deletion (audit trail)
+          allow delete: if false;
+        }
+
+        // SHIFTS subcollection (time tracking results)
+        match /shifts/{shiftId} {
+          // Any org member can read a user's shifts
+          allow read: if isOrgMember(orgId);
+
+          // User can create their own shift record; admins/managers too
+          allow create: if isAuthenticated() &&
+                          (request.auth.uid == userId || isOrgAdminOrManager(orgId)) &&
+                          request.resource.data.orgId == orgId &&
+                          request.resource.data.userId == userId &&
+                          request.resource.data.clockInTime is string &&
+                          request.resource.data.clockOutTime is string &&
+                          request.resource.data.totalHoursAtWorkMs is number &&
+                          request.resource.data.actualWorkingHoursMs is number &&
+                          request.resource.data.totalBreakTimeMs is number;
+
+          // Prevent edits/deletes from client (immutable record)
+          allow update, delete: if false;
+        }
+      }
+      
+      // === PROJECTS subcollection ===
+      match /projects/{projectId} {
+        // Any org member can read projects; also allow org admin based on org doc for onboarding
+        allow read: if isOrgMember(orgId) || isOrgAdmin(orgId);
+        
+        // Admin/Manager can create projects
+        allow create: if isOrgAdminOrManager(orgId) &&
+                        request.resource.data.organizationId == orgId;
+        
+        // Admin/Manager can update projects
+        allow update: if isOrgAdminOrManager(orgId);
+        
+        // Admin/Manager can delete projects
+        allow delete: if isOrgAdminOrManager(orgId);
+      }
+
+      // === PROJECT AGGREGATES (written by backend only) ===
+      match /projects/{projectId}/monthlyStats/{monthId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if false; // backend/Admin SDK only
+      }
+      match /projects/{projectId}/weeklyStats/{weekId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if false; // backend/Admin SDK only
+      }
+      
+      // === LOCATION_SETTINGS subcollection ===
+      match /location_settings/{settingId} {
+        // Any org member can read location settings
+        allow read: if isOrgMember(orgId);
+        
+        // Admin/Manager can create/update location settings
+        allow create, update: if isOrgAdminOrManager(orgId) &&
+                                 request.resource.data.organizationId == orgId;
+        
+        // Admin/Manager can delete location settings
+        allow delete: if isOrgAdminOrManager(orgId);
+      }
+      
+      // === WORK_LOCATIONS subcollection ===
+      match /work_locations/{locationId} {
+        // Any org member can read work locations
+        allow read: if isOrgMember(orgId);
+        
+        // Admin/Manager can create work locations
+        allow create: if isOrgAdminOrManager(orgId) &&
+                        request.resource.data.organizationId == orgId;
+        
+        // Admin/Manager can update work locations
+        allow update: if isOrgAdminOrManager(orgId);
+        
+        // Admin/Manager can delete work locations
+        allow delete: if isOrgAdminOrManager(orgId);
+      }
+      
+      // === USER_GROUPS subcollection ===
+      match /user_groups/{groupId} {
+        // Any org member can read user groups
+        allow read: if isOrgMember(orgId);
+        
+        // Admin/Manager can create user groups
+        allow create: if isOrgAdminOrManager(orgId) &&
+                        request.resource.data.organizationId == orgId;
+        
+        // Admin/Manager can update user groups
+        allow update: if isOrgAdminOrManager(orgId);
+        
+        // Admin/Manager can delete user groups
+        allow delete: if isOrgAdminOrManager(orgId);
+      }
+
+      // === USER AGGREGATES (written by backend only) ===
+      match /users/{userId}/monthlyStats/{monthId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if false;
+      }
+      match /users/{userId}/weeklyStats/{weekId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if false;
+      }
+    }
+    
+    // === TOP-LEVEL USERS (lightweight lookup only) ===
+    // Keep minimal data here: { organizationId, email, userId }
+    match /users/{userId} {
+      // Users can read their own lookup doc
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Allow creation during signup
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Users can update their own lookup doc
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Prevent deletion
       allow delete: if false;
+    }
+
+    // === USER_INVITATIONS (top-level legacy) ===
+    // Keep read-only for legacy validation; new writes must use org-scoped path
+    match /user_invitations/{invitationId} {
+      allow read: if true;
+      allow delete: if true;
+      allow create, update: if false;
     }
   }
 }

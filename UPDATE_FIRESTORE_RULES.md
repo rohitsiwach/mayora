@@ -134,3 +134,86 @@ If you still see errors after publishing:
 - **Firestore Rules**: https://console.firebase.google.com/u/0/project/mayora-160cf/firestore/rules
 - **Firestore Data**: https://console.firebase.google.com/u/0/project/mayora-160cf/firestore/data
 - **Authentication**: https://console.firebase.google.com/u/0/project/mayora-160cf/authentication/users
+
+---
+
+## Org-scoped Invitations (current app structure) – Recommended Rules
+
+Your app now stores invitations under organizations:
+
+- organizations/{orgId}/user_invitations/{invitationId}
+- organizations/{orgId}/users/{userId}
+
+Update your rules to match this structure. The snippet below enables:
+- Public read of invitations for signup-code validation (collection group works with this match)
+- Authenticated org members to create/update/delete invitations in their org
+- Standard org membership checks using the lightweight top‑level `users/{uid}` lookup
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function userId() { return request.auth.uid; }
+    function userLookup() {
+      return get(/databases/$(database)/documents/users/$(userId()));
+    }
+    function isOrgMember(orgId) {
+      return isSignedIn() && userLookup().exists && userLookup().data.organizationId == orgId;
+    }
+    function isOrgAdmin(orgId) {
+      return isOrgMember(orgId) &&
+             get(/databases/$(database)/documents/organizations/$(orgId)).data.adminUserId == userId();
+    }
+
+    // Organization doc
+    match /organizations/{orgId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isOrgAdmin(orgId);
+
+      // Invitations under organization
+      match /user_invitations/{invitationId} {
+        // Allow public read so signup page can validate codes via collectionGroup
+        allow read: if true;
+
+        // Allow org members to create invitations they send
+        allow create: if isOrgMember(orgId) &&
+                       request.resource.data.invitedBy == userId();
+
+        // Allow updates/deletes by org members (e.g., resend, revoke, cleanup)
+        allow update, delete: if isOrgMember(orgId);
+      }
+
+      // User profiles under organization
+      match /users/{uid} {
+        allow read: if isOrgMember(orgId);
+        // Allow a user to create their own profile during signup/invitation acceptance
+        allow create: if isOrgMember(orgId) && userId() == uid;
+        // Allow user self-updates, or admin updates
+        allow update: if (isOrgMember(orgId) && userId() == uid) || isOrgAdmin(orgId);
+      }
+
+      // Projects (and other org subcollections)
+      match /projects/{projectId} {
+        allow read, create, update, delete: if isOrgMember(orgId);
+      }
+
+      // Add similar blocks for other subcollections if needed:
+      // user_groups, work_locations, location_settings, etc.
+    }
+
+    // Top-level lightweight user lookup used by the rules
+    match /users/{uid} {
+      // Read/write by the authenticated user; writes are done by the app during signup
+      allow read: if isSignedIn() && userId() == uid;
+      allow create, update: if isSignedIn() && userId() == uid;
+    }
+  }
+}
+```
+
+Notes:
+- These rules assume your app creates/maintains `users/{uid}` with `organizationId` (the code already does this via `ensureCanonicalUserDocument()` and during signup/invite acceptance).
+- If you have multiple orgs per user, extend the lookup or use claims/role arrays accordingly.
+- After publishing, try sending an invitation again from the Users page.

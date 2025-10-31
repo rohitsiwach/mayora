@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/firestore_service.dart';
 import '../services/schedule_service.dart';
 import '../services/auth_service.dart';
+import '../services/hierarchical_firestore_service.dart';
 
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
@@ -23,6 +24,7 @@ class _SchedulePageState extends State<SchedulePage> {
   final _auth = AuthService();
   final _fs = FirestoreService();
   final _scheduler = ScheduleService();
+  final _hierarchical = HierarchicalFirestoreService();
 
   String? _organizationId;
   String _targetMode = 'single'; // single | group | multiple
@@ -475,11 +477,8 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Widget _buildUsersDropdown({bool single = false}) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .where('organizationId', isEqualTo: _organizationId)
-          .snapshots(),
+    return StreamBuilder<QuerySnapshot>(
+      stream: _hierarchical.usersCollection(_organizationId!).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const InputDecorator(
@@ -491,13 +490,13 @@ class _SchedulePageState extends State<SchedulePage> {
           );
         }
         final docs = snapshot.data!.docs;
-        // Deduplicate by userId to avoid duplicate Dropdown values (canonical + legacy doc)
+        // Map user documents
         final Map<String, String> userMap = {};
         for (final d in docs) {
-          final data = d.data();
-          final uid = (data['userId'] ?? d.id).toString();
+          final data = d.data() as Map<String, dynamic>;
+          final uid =
+              d.id; // Document ID is the userId in hierarchical structure
           final name = (data['name'] ?? data['email'] ?? uid).toString();
-          // Keep first occurrence; prefer non-empty name if duplicate encountered
           if (!userMap.containsKey(uid) ||
               (userMap[uid] == uid && name != uid)) {
             userMap[uid] = name;
@@ -537,17 +536,14 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Widget _buildGroupsDropdown() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('user_groups')
-          .where('organizationId', isEqualTo: _organizationId)
-          .snapshots(),
+    return StreamBuilder<QuerySnapshot>(
+      stream: _hierarchical.userGroupsCollection(_organizationId!).snapshots(),
       builder: (context, snapshot) {
         final items = <DropdownMenuItem<String>>[];
         if (snapshot.hasData) {
           items.addAll(
             snapshot.data!.docs.map((d) {
-              final data = d.data();
+              final data = d.data() as Map<String, dynamic>;
               return DropdownMenuItem<String>(
                 value: d.id,
                 child: Text(data['name'] ?? 'Group ${d.id.substring(0, 6)}'),
@@ -603,26 +599,23 @@ class _SchedulePageState extends State<SchedulePage> {
           content: SizedBox(
             width: 400,
             height: 400,
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .where('organizationId', isEqualTo: _organizationId)
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _hierarchical
+                  .usersCollection(_organizationId!)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData)
                   return const Center(child: CircularProgressIndicator());
                 final docs = snapshot.data!.docs;
-                // Deduplicate by userId
+                // Map user documents
                 final Map<String, String> userMap = {};
                 for (final d in docs) {
-                  final data = d.data();
-                  final uid = (data['userId'] ?? d.id).toString();
+                  final data = d.data() as Map<String, dynamic>;
+                  final uid =
+                      d.id; // Document ID is userId in hierarchical structure
                   final name = (data['name'] ?? data['email'] ?? uid)
                       .toString();
-                  if (!userMap.containsKey(uid) ||
-                      (userMap[uid] == uid && name != uid)) {
-                    userMap[uid] = name;
-                  }
+                  userMap[uid] = name;
                 }
                 return StatefulBuilder(
                   builder: (context, setStateDialog) {
@@ -725,12 +718,12 @@ class _SchedulePageState extends State<SchedulePage> {
       users = [_selectedUserId!];
     } else if (_targetMode == 'group') {
       if (_selectedGroupId == null) return;
-      // Load group members (userIds array)
-      final groupDoc = await FirebaseFirestore.instance
-          .collection('user_groups')
+      // Load group members (userIds array) from hierarchical structure
+      final groupDoc = await _hierarchical
+          .userGroupsCollection(_organizationId!)
           .doc(_selectedGroupId)
           .get();
-      final data = groupDoc.data() ?? {};
+      final data = groupDoc.data() as Map<String, dynamic>? ?? {};
       final List<dynamic> members = data['userIds'] ?? [];
       users = members.map((e) => e.toString()).toList();
     } else {
@@ -817,11 +810,9 @@ class _SchedulePageState extends State<SchedulePage> {
   Widget _buildRecentSchedules() {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return const SizedBox.shrink();
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .collection('schedules')
+    return StreamBuilder<QuerySnapshot>(
+      stream: _hierarchical
+          .schedulesCollection(_organizationId!, currentUser.uid)
           .orderBy('date', descending: true)
           .limit(25)
           .snapshots(),
@@ -851,9 +842,9 @@ class _SchedulePageState extends State<SchedulePage> {
           itemCount: docs.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
-            final data = docs[index].data();
-            final date = (data['date'] as Timestamp?)?.toDate();
-            final title = data['title'] ?? '';
+            final data = docs[index].data() as Map<String, dynamic>?;
+            final date = (data?['date'] as Timestamp?)?.toDate();
+            final title = data?['title'] ?? '';
             return ListTile(
               leading: const Icon(Icons.schedule),
               title: Text(title),

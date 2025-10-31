@@ -307,8 +307,8 @@ class _SignUpPageState extends State<SignUpPage> {
         organizationData,
       );
 
-      // Step 3: Create user document in Firestore
-      await _firestore.collection('users').add({
+      // Step 3: Create user document in hierarchical Firestore structure
+      final userData = {
         'userId': userId,
         'organizationId': organizationId,
         'name': _nameController.text.trim(),
@@ -338,6 +338,21 @@ class _SignUpPageState extends State<SignUpPage> {
         'taxId': _taxIdController.text.trim(),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      // Create user in hierarchical org structure: organizations/{orgId}/users/{userId}
+      await _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('users')
+          .doc(userId)
+          .set(userData);
+
+      // Create lightweight lookup document: users/{userId}
+      await _firestore.collection('users').doc(userId).set({
+        'organizationId': organizationId,
+        'email': _emailController.text.trim(),
+        'userId': userId,
       });
 
       // Step 4: Create default internal project

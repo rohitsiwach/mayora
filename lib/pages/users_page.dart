@@ -22,6 +22,10 @@ class _UsersPageState extends State<UsersPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      // Rebuild when tab changes to update FAB
+      setState(() {});
+    });
     // Cache streams as broadcast to allow multiple listeners
     _usersStream = _firestoreService.getRegisteredUsers().asBroadcastStream();
     _invitationsStream = _firestoreService
@@ -64,10 +68,22 @@ class _UsersPageState extends State<UsersPage>
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showInviteUserDialog(context),
+        onPressed: () {
+          if (_tabController.index == 2) {
+            _showCreateGroupDialog();
+          } else {
+            _showInviteUserDialog(context);
+          }
+        },
         backgroundColor: const Color(0xFF673AB7),
-        icon: const Icon(Icons.person_add, color: Colors.white),
-        label: const Text('Invite User', style: TextStyle(color: Colors.white)),
+        icon: Icon(
+          _tabController.index == 2 ? Icons.group_add : Icons.person_add,
+          color: Colors.white,
+        ),
+        label: Text(
+          _tabController.index == 2 ? 'Create Group' : 'Invite User',
+          style: const TextStyle(color: Colors.white),
+        ),
       ),
     );
   }
@@ -159,6 +175,7 @@ class _UsersPageState extends State<UsersPage>
       stream: _userGroupsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
+          print('User groups error: ${snapshot.error}');
           return _buildErrorState('Error loading user groups', snapshot.error);
         }
 
@@ -1632,14 +1649,19 @@ class _UserInvitationDialogState extends State<UserInvitationDialog> {
 
       try {
         if (widget.userId == null) {
-          final invitationId = await widget.firestoreService.sendUserInvitation(
+          final inviteResult = await widget.firestoreService.sendUserInvitation(
             userData,
           );
-          if (invitationId != null && context.mounted) {
+          if (inviteResult != null && context.mounted) {
             Navigator.pop(context);
+            // Use the generated invitation code directly from the service result
+            final String codeToShow =
+                (inviteResult['invitationCode']?.isNotEmpty ?? false)
+                ? inviteResult['invitationCode']!
+                : inviteResult['id']!;
             _showInvitationCodeDialog(
               context,
-              invitationId,
+              codeToShow,
               userData['email'] as String,
             );
           }

@@ -1,0 +1,15 @@
+{
+  "name": "mayora-firestore-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Utility scripts for Firestore data maintenance (user merges, etc.)",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  },
+  "scripts": {
+    "merge-user": "node merge_user_docs.cjs",
+    "migrate-org": "node migrate_to_org_hierarchy.cjs"
+  }
+}

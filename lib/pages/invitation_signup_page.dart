@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
 
@@ -102,9 +103,97 @@ class _InvitationSignUpPageState extends State<InvitationSignUpPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Step 1: Accept invitation and create user document (before auth)
-      // Prepare additional user data
+      final String invitedEmail = _invitationData!['email'];
+
+      // If user is already signed in with the invited email, skip creation
+      final current = _authService.currentUser;
+      String? userId;
+      if (current != null &&
+          (current.email ?? '').toLowerCase() == invitedEmail.toLowerCase()) {
+        userId = current.uid;
+      } else {
+        // Try to create the authentication account
+        try {
+          final userCredential = await _authService
+              .createUserWithEmailAndPassword(
+                email: invitedEmail,
+                password: _passwordController.text,
+              );
+
+          if (userCredential == null) {
+            throw Exception('Failed to create account');
+          }
+          userId = userCredential.user!.uid;
+        } on FirebaseAuthException catch (authError) {
+          if (authError.code == 'email-already-in-use') {
+            // Account exists in Firebase Auth - try to sign in and continue
+            // This handles the case where Auth account was created but Firestore profile wasn't
+            try {
+              final signInCredential = await _authService
+                  .signInWithEmailAndPassword(
+                    email: invitedEmail,
+                    password: _passwordController.text,
+                  );
+
+              if (signInCredential != null && signInCredential.user != null) {
+                // Successfully signed in - use this account and continue registration
+                userId = signInCredential.user!.uid;
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Using existing account to complete registration',
+                      ),
+                      backgroundColor: Colors.blue,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              } else {
+                throw Exception('Failed to sign in with existing account');
+              }
+            } on FirebaseAuthException {
+              // Wrong password or other sign-in error
+              if (mounted) {
+                setState(() => _isLoading = false);
+                await showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Account already exists'),
+                    content: Text(
+                      'An account with $invitedEmail already exists, but the password you entered is incorrect.\n\n'
+                      'Please sign in with the correct password to accept this invitation, then return to this page and tap "Complete Registration".',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.pushNamed(context, '/');
+                        },
+                        child: const Text('Go to Sign In'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return; // Exit without throwing
+            }
+          } else {
+            // For other auth errors, rethrow to outer catch
+            rethrow;
+          }
+        }
+      }
+
+      // Step 2: Prepare additional user data
       final additionalData = {
+        'userId': userId, // Include userId for hierarchical structure
+        'organizationId': _invitationData!['organizationId'], // Include organizationId
         'address': _addressController.text.trim(),
         'phone': _phoneController.text.trim(),
         'dateOfBirth': _dateOfBirth.toIso8601String().split('T')[0],
@@ -116,25 +205,11 @@ class _InvitationSignUpPageState extends State<InvitationSignUpPage> {
         'taxId': _taxIdController.text.trim(),
       };
 
-      // Accept invitation (creates user document)
+      // Step 3: Accept invitation (creates user document in hierarchical structure)
       await _firestoreService.acceptInvitation(
         _invitationData!['id'],
         additionalData,
       );
-
-      // Step 2: Create authentication account
-      final userCredential = await _authService.createUserWithEmailAndPassword(
-        email: _invitationData!['email'],
-        password: _passwordController.text,
-      );
-
-      if (userCredential == null) {
-        throw Exception('Failed to create account');
-      }
-
-      // Step 3: Now that user is authenticated, update the user document with userId
-      // Wait a moment for auth to propagate
-      await Future.delayed(const Duration(milliseconds: 500));
 
       if (mounted) {
         // Navigate to home page

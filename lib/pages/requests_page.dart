@@ -474,6 +474,7 @@ class _RequestsPageState extends State<RequestsPage> {
       if (currentUser == null) return;
 
       await _leaveService.updateLeaveStatus(
+        organizationId: _organizationId!,
         userId: request.userId,
         requestId: request.id!,
         status: approve ? 'approved' : 'rejected',

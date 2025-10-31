@@ -38,8 +38,9 @@ class AuthService {
         password: password,
       );
       return credential;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
+    } on FirebaseAuthException {
+      // Rethrow the original exception so calling code can handle specific error codes
+      rethrow;
     } catch (e) {
       throw 'An unexpected error occurred. Please try again.';
     }

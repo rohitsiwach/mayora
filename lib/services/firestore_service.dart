@@ -1,101 +1,51 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'hierarchical_firestore_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final HierarchicalFirestoreService _hierarchical =
+      HierarchicalFirestoreService();
 
   // Get current user's ID
   String? get _currentUserId => _auth.currentUser?.uid;
 
-  // Cache for organization ID
-  String? _cachedOrganizationId;
-
-  /// Get the current user's organization ID
+  /// Get the current user's organization ID from lightweight lookup doc
   Future<String?> getCurrentUserOrganizationId() async {
-    if (_cachedOrganizationId != null) return _cachedOrganizationId;
-
-    if (_currentUserId == null) return null;
-
-    try {
-      final querySnapshot = await _firestore
-          .collection('users')
-          .where('userId', isEqualTo: _currentUserId)
-          .limit(1)
-          .get();
-
-      if (querySnapshot.docs.isNotEmpty) {
-        _cachedOrganizationId =
-            querySnapshot.docs.first.data()['organizationId'] as String?;
-        return _cachedOrganizationId;
-      }
-      return null;
-    } catch (e) {
-      print('Error getting organization ID: $e');
-      return null;
-    }
+    return await _hierarchical.getCurrentUserOrganizationId();
   }
 
   /// Clear cached organization ID (call on sign out)
   void clearCache() {
-    _cachedOrganizationId = null;
+    _hierarchical.clearCache();
   }
 
-  /// Ensure there is a canonical user document at `users/{uid}` so that
-  /// security rules can look up the current user's accessLevel/organizationId.
+  /// Ensure there is a lightweight user lookup document at `users/{uid}`
   Future<void> ensureCanonicalUserDocument() async {
     final uid = _currentUserId;
     if (uid == null) return;
+
     try {
       final canonicalRef = _firestore.collection('users').doc(uid);
       final canonicalSnap = await canonicalRef.get();
       if (canonicalSnap.exists) return; // Already present
 
-      // Try to find existing profile (created with auto-id) via userId field
-      final existingQuery = await _firestore
-          .collection('users')
-          .where('userId', isEqualTo: uid)
+      // Get org ID from organizations where user is admin
+      final orgByAdmin = await _firestore
+          .collection('organizations')
+          .where('adminUserId', isEqualTo: uid)
           .limit(1)
           .get();
 
-      Map<String, dynamic> dataToWrite = {
-        'userId': uid,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
+      if (orgByAdmin.docs.isNotEmpty) {
+        final orgId = orgByAdmin.docs.first.id;
+        final email = _auth.currentUser?.email ?? '';
 
-      if (existingQuery.docs.isNotEmpty) {
-        final data = existingQuery.docs.first.data();
-        dataToWrite.addAll({
-          'organizationId': data['organizationId'],
-          'accessLevel': data['accessLevel'],
-          'name': data['name'],
-          'email': data['email'],
-          'createdAt': data['createdAt'] ?? FieldValue.serverTimestamp(),
-        });
-      } else {
-        // Minimal doc so rules can still resolve; organizationId may be filled later
-        dataToWrite['createdAt'] = FieldValue.serverTimestamp();
+        // Create lightweight lookup doc
+        await _hierarchical.updateUserLookup(uid, orgId, email);
       }
-
-      // If we still don't have organizationId or accessLevel, try organizations collection
-      if (dataToWrite['organizationId'] == null ||
-          dataToWrite['accessLevel'] == null) {
-        try {
-          final orgByAdmin = await _firestore
-              .collection('organizations')
-              .where('adminUserId', isEqualTo: uid)
-              .limit(1)
-              .get();
-          if (orgByAdmin.docs.isNotEmpty) {
-            dataToWrite['organizationId'] = orgByAdmin.docs.first.id;
-            dataToWrite['accessLevel'] = dataToWrite['accessLevel'] ?? 'Admin';
-          }
-        } catch (_) {}
-      }
-
-      await canonicalRef.set(dataToWrite, SetOptions(merge: true));
     } catch (e) {
-      // Non-fatal: do not crash app if this fails
       print('ensureCanonicalUserDocument error: $e');
     }
   }
@@ -104,22 +54,13 @@ class FirestoreService {
   Future<String?> getCurrentUserAccessLevel() async {
     final uid = _currentUserId;
     if (uid == null) return null;
+
     try {
-      // Prefer canonical doc
-      final doc = await _firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
-        return (doc.data() ?? {})['accessLevel'] as String?;
-      }
-      // Fallback to search by userId field
-      final q = await _firestore
-          .collection('users')
-          .where('userId', isEqualTo: uid)
-          .limit(1)
-          .get();
-      if (q.docs.isNotEmpty) {
-        return q.docs.first.data()['accessLevel'] as String?;
-      }
-      return null;
+      final orgId = await getCurrentUserOrganizationId();
+      if (orgId == null) return null;
+
+      final profile = await _hierarchical.getUserProfile(orgId, uid);
+      return profile?['accessLevel'] as String?;
     } catch (e) {
       print('Error getting access level: $e');
       return null;
@@ -135,20 +76,13 @@ class FirestoreService {
         throw Exception('User not authenticated');
       }
 
-      // Get organization ID
       final organizationId = await getCurrentUserOrganizationId();
       if (organizationId == null) {
         throw Exception('User is not associated with an organization');
       }
 
-      // Add metadata
-      projectData['organizationId'] = organizationId;
       projectData['createdBy'] = _currentUserId;
-      projectData['createdAt'] = FieldValue.serverTimestamp();
-      projectData['updatedAt'] = FieldValue.serverTimestamp();
-
-      final docRef = await _firestore.collection('projects').add(projectData);
-      return docRef.id;
+      return await _hierarchical.createProject(organizationId, projectData);
     } catch (e) {
       print('Error adding project: $e');
       rethrow;
@@ -158,16 +92,13 @@ class FirestoreService {
   /// Get all projects for the current user's organization
   Stream<QuerySnapshot> getProjects() {
     if (_currentUserId == null) {
-      // Return empty stream instead of throwing
       return Stream.error(Exception('User not authenticated'));
     }
 
-    // Return a stream that first gets the organizationId then queries projects
     return Stream.fromFuture(getCurrentUserOrganizationId()).asyncExpand((
       organizationId,
     ) {
       if (organizationId == null) {
-        // Return empty stream instead of throwing
         return Stream.error(
           Exception(
             'User is not associated with an organization. Please contact support.',
@@ -175,10 +106,7 @@ class FirestoreService {
         );
       }
 
-      return _firestore
-          .collection('projects')
-          .where('organizationId', isEqualTo: organizationId)
-          .snapshots();
+      return _hierarchical.streamOrgProjects(organizationId);
     });
   }
 
@@ -188,11 +116,12 @@ class FirestoreService {
     Map<String, dynamic> projectData,
   ) async {
     try {
-      projectData['updatedAt'] = FieldValue.serverTimestamp();
-      await _firestore
-          .collection('projects')
-          .doc(projectId)
-          .update(projectData);
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+
+      await _hierarchical.updateProject(organizationId, projectId, projectData);
     } catch (e) {
       print('Error updating project: $e');
       rethrow;
@@ -202,7 +131,12 @@ class FirestoreService {
   /// Delete a project
   Future<void> deleteProject(String projectId) async {
     try {
-      await _firestore.collection('projects').doc(projectId).delete();
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+
+      await _hierarchical.deleteProject(organizationId, projectId);
     } catch (e) {
       print('Error deleting project: $e');
       rethrow;
@@ -213,7 +147,7 @@ class FirestoreService {
 
   /// Generate a unique 8-character invitation code
   String generateInvitationCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding similar chars
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final random = DateTime.now().millisecondsSinceEpoch;
     String code = '';
     var value = random;
@@ -226,26 +160,29 @@ class FirestoreService {
     return code;
   }
 
-  /// Send user invitation (save to Firestore)
-  Future<String?> sendUserInvitation(Map<String, dynamic> userData) async {
+  /// Send user invitation (now under organizations/{orgId}/user_invitations)
+  /// Returns both the created document id and the generated invitationCode
+  Future<Map<String, String>?> sendUserInvitation(
+    Map<String, dynamic> userData,
+  ) async {
     try {
       if (_currentUserId == null) {
         throw Exception('User not authenticated');
       }
 
-      // Get organization ID
-      final organizationId = await getCurrentUserOrganizationId();
+      // Ensure the lightweight lookup doc exists so Firestore rules can validate org membership
+      String? organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        await ensureCanonicalUserDocument();
+        organizationId = await getCurrentUserOrganizationId();
+      }
       if (organizationId == null) {
         throw Exception('User is not associated with an organization');
       }
 
-      // Generate unique invitation code
       final invitationCode = generateInvitationCode();
-
-      // Calculate expiry date (2 weeks from now)
       final expiryDate = DateTime.now().add(const Duration(days: 14));
 
-      // Add metadata
       userData['organizationId'] = organizationId;
       userData['invitedBy'] = _currentUserId;
       userData['invitationCode'] = invitationCode;
@@ -255,10 +192,8 @@ class FirestoreService {
       userData['status'] = 'Pending';
       userData['invitationCount'] = 1;
 
-      final docRef = await _firestore
-          .collection('user_invitations')
-          .add(userData);
-      return docRef.id;
+      final id = await _hierarchical.createInvitation(organizationId, userData);
+      return {'id': id, 'invitationCode': invitationCode};
     } catch (e) {
       print('Error sending invitation: $e');
       rethrow;
@@ -274,17 +209,19 @@ class FirestoreService {
     return Stream.fromFuture(getCurrentUserOrganizationId()).asyncExpand((
       organizationId,
     ) {
-      if (organizationId == null) {
-        return Stream.error(
-          Exception(
-            'User is not associated with an organization. Please contact support.',
-          ),
-        );
+      if (organizationId != null) {
+        // Preferred: scope to current org
+        return _hierarchical
+            .invitationsCollection(organizationId)
+            .where('invitedBy', isEqualTo: _currentUserId)
+            .snapshots();
       }
 
+      // Fallback: If org lookup is missing (eg. legacy admin), use collectionGroup
+      // filtered by inviter so the user still sees their invitations.
+      // This avoids breaking the Invitations tab with an error state.
       return _firestore
-          .collection('user_invitations')
-          .where('organizationId', isEqualTo: organizationId)
+          .collectionGroup('user_invitations')
           .where('invitedBy', isEqualTo: _currentUserId)
           .snapshots();
     });
@@ -296,11 +233,15 @@ class FirestoreService {
     Map<String, dynamic> userData,
   ) async {
     try {
-      userData['updatedAt'] = FieldValue.serverTimestamp();
-      await _firestore
-          .collection('user_invitations')
-          .doc(invitationId)
-          .update(userData);
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+      await _hierarchical.updateInvitation(
+        organizationId,
+        invitationId,
+        userData,
+      );
     } catch (e) {
       print('Error updating invitation: $e');
       rethrow;
@@ -310,10 +251,11 @@ class FirestoreService {
   /// Delete user invitation
   Future<void> deleteUserInvitation(String invitationId) async {
     try {
-      await _firestore
-          .collection('user_invitations')
-          .doc(invitationId)
-          .delete();
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+      await _hierarchical.deleteInvitation(organizationId, invitationId);
     } catch (e) {
       print('Error deleting invitation: $e');
       rethrow;
@@ -323,7 +265,11 @@ class FirestoreService {
   /// Resend invitation (update timestamp)
   Future<void> resendInvitation(String invitationId) async {
     try {
-      await _firestore.collection('user_invitations').doc(invitationId).update({
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+      await _hierarchical.updateInvitation(organizationId, invitationId, {
         'lastInvitationSent': FieldValue.serverTimestamp(),
         'invitationCount': FieldValue.increment(1),
       });
@@ -336,7 +282,12 @@ class FirestoreService {
   /// Deactivate user
   Future<void> deactivateUser(String userId) async {
     try {
-      await _firestore.collection('users').doc(userId).update({
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+
+      await _hierarchical.updateUserProfile(organizationId, userId, {
         'status': 'Deactivated',
         'deactivatedAt': FieldValue.serverTimestamp(),
       });
@@ -363,34 +314,31 @@ class FirestoreService {
         );
       }
 
-      return _firestore
-          .collection('users')
-          .where('organizationId', isEqualTo: organizationId)
-          .snapshots();
+      return _hierarchical.streamOrgUsers(organizationId);
     });
   }
 
   /// Validate invitation code and get invitation data
+  /// Validate invitation by code using collection group query so it works across orgs
   Future<Map<String, dynamic>?> validateInvitationCode(String code) async {
     try {
       final querySnapshot = await _firestore
-          .collection('user_invitations')
+          .collectionGroup('user_invitations')
           .where('invitationCode', isEqualTo: code)
           .where('status', isEqualTo: 'Pending')
           .limit(1)
           .get();
 
       if (querySnapshot.docs.isEmpty) {
-        return null; // Invalid code
+        return null;
       }
 
       final doc = querySnapshot.docs.first;
       final data = doc.data();
 
-      // Check if expired
       final expiryDate = (data['expiryDate'] as Timestamp).toDate();
       if (DateTime.now().isAfter(expiryDate)) {
-        return null; // Expired
+        return null;
       }
 
       return {...data, 'id': doc.id};
@@ -401,51 +349,65 @@ class FirestoreService {
   }
 
   /// Accept invitation and create user account
+  /// Accept invitation under organization path
   Future<void> acceptInvitation(
     String invitationId,
     Map<String, dynamic> additionalUserData,
   ) async {
     try {
-      // Get invitation data (this works because we allow public read)
-      final invitationDoc = await _firestore
-          .collection('user_invitations')
-          .doc(invitationId)
-          .get();
+      final String? orgId = additionalUserData['organizationId'] as String?;
+
+      // If orgId not present in the payload, fetch via collection group by id
+      Map<String, dynamic>? invitationData;
+      String? organizationId;
+      DocumentSnapshot? invitationDoc;
+
+      if (orgId != null) {
+        organizationId = orgId;
+        invitationDoc = await _hierarchical
+            .invitationsCollection(organizationId)
+            .doc(invitationId)
+            .get();
+      } else {
+        // Fallback: organizationId should always be provided, but handle gracefully
+        throw Exception(
+          'Organization ID is required to accept invitation. Please validate the invitation code first.',
+        );
+      }
 
       if (!invitationDoc.exists) {
         throw Exception('Invitation not found');
       }
+      invitationData = invitationDoc.data() as Map<String, dynamic>;
+      // organizationId is guaranteed to be set above; no-op
+      final userId = additionalUserData['userId'] as String;
 
-      final invitationData = invitationDoc.data()!;
-
-      // Merge invitation data with additional user data
       final userData = {
         ...invitationData,
         ...additionalUserData,
         'status': 'Active',
         'acceptedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      // Remove invitation-specific fields
       userData.remove('invitationCode');
       userData.remove('expiryDate');
       userData.remove('invitationCount');
 
-      // Add to users collection (this works because we allow public create)
-      await _firestore.collection('users').add(userData);
+      // Create user profile in org hierarchy
+      await _hierarchical.createUserProfile(organizationId, userId, userData);
 
-      // Delete the invitation from user_invitations collection
-      // The invitation has been accepted and user created, so we no longer need it
+      // Create lightweight lookup doc
+      final email = userData['email'] as String? ?? '';
+      await _hierarchical.updateUserLookup(userId, organizationId, email);
+
+      // Delete the invitation from org path
       try {
-        await _firestore
-            .collection('user_invitations')
+        await _hierarchical
+            .invitationsCollection(organizationId)
             .doc(invitationId)
             .delete();
-        print('Invitation deleted successfully after user creation');
       } catch (deleteError) {
-        print('Note: Could not delete invitation (this is okay): $deleteError');
-        // Don't rethrow - the important part (creating the user) succeeded
+        print('Note: Could not delete invitation: $deleteError');
       }
     } catch (e) {
       print('Error accepting invitation: $e');
@@ -456,16 +418,14 @@ class FirestoreService {
   /// Get invitation by ID
   Future<Map<String, dynamic>?> getInvitationById(String invitationId) async {
     try {
-      final doc = await _firestore
-          .collection('user_invitations')
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) return null;
+      final doc = await _hierarchical
+          .invitationsCollection(organizationId)
           .doc(invitationId)
           .get();
-
-      if (!doc.exists) {
-        return null;
-      }
-
-      return {...doc.data()!, 'id': doc.id};
+      if (!doc.exists) return null;
+      return {...doc.data() as Map<String, dynamic>, 'id': doc.id};
     } catch (e) {
       print('Error getting invitation: $e');
       rethrow;
@@ -486,13 +446,8 @@ class FirestoreService {
         throw Exception('User is not associated with an organization');
       }
 
-      groupData['organizationId'] = organizationId;
       groupData['createdBy'] = _currentUserId;
-      groupData['createdAt'] = FieldValue.serverTimestamp();
-      groupData['updatedAt'] = FieldValue.serverTimestamp();
-
-      final docRef = await _firestore.collection('user_groups').add(groupData);
-      return docRef.id;
+      return await _hierarchical.createUserGroup(organizationId, groupData);
     } catch (e) {
       print('Error creating user group: $e');
       rethrow;
@@ -514,11 +469,7 @@ class FirestoreService {
         );
       }
 
-      return _firestore
-          .collection('user_groups')
-          .where('organizationId', isEqualTo: organizationId)
-          .orderBy('createdAt', descending: true)
-          .snapshots();
+      return _hierarchical.streamOrgUserGroups(organizationId);
     });
   }
 
@@ -528,8 +479,12 @@ class FirestoreService {
     Map<String, dynamic> updates,
   ) async {
     try {
-      updates['updatedAt'] = FieldValue.serverTimestamp();
-      await _firestore.collection('user_groups').doc(groupId).update(updates);
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+
+      await _hierarchical.updateUserGroup(organizationId, groupId, updates);
     } catch (e) {
       print('Error updating user group: $e');
       rethrow;
@@ -539,7 +494,12 @@ class FirestoreService {
   /// Delete user group
   Future<void> deleteUserGroup(String groupId) async {
     try {
-      await _firestore.collection('user_groups').doc(groupId).delete();
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+
+      await _hierarchical.deleteUserGroup(organizationId, groupId);
     } catch (e) {
       print('Error deleting user group: $e');
       rethrow;
@@ -549,9 +509,13 @@ class FirestoreService {
   /// Add user to group
   Future<void> addUserToGroup(String groupId, String userId) async {
     try {
-      await _firestore.collection('user_groups').doc(groupId).update({
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+
+      await _hierarchical.updateUserGroup(organizationId, groupId, {
         'members': FieldValue.arrayUnion([userId]),
-        'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       print('Error adding user to group: $e');
@@ -562,9 +526,13 @@ class FirestoreService {
   /// Remove user from group
   Future<void> removeUserFromGroup(String groupId, String userId) async {
     try {
-      await _firestore.collection('user_groups').doc(groupId).update({
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) {
+        throw Exception('User is not associated with an organization');
+      }
+
+      await _hierarchical.updateUserGroup(organizationId, groupId, {
         'members': FieldValue.arrayRemove([userId]),
-        'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       print('Error removing user from group: $e');
@@ -577,23 +545,21 @@ class FirestoreService {
   /// Get user's join date
   Future<DateTime?> getUserJoinDate(String userId) async {
     try {
-      final querySnapshot = await _firestore
-          .collection('users')
-          .where('userId', isEqualTo: userId)
-          .limit(1)
-          .get();
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) return DateTime(DateTime.now().year, 1, 1);
 
-      if (querySnapshot.docs.isNotEmpty) {
-        final data = querySnapshot.docs.first.data();
-        if (data['hireDate'] != null) {
-          return (data['hireDate'] as Timestamp).toDate();
+      final profile = await _hierarchical.getUserProfile(
+        organizationId,
+        userId,
+      );
+      if (profile != null) {
+        if (profile['hireDate'] != null) {
+          return (profile['hireDate'] as Timestamp).toDate();
         }
-        // Fallback to createdAt if hireDate not set
-        if (data['createdAt'] != null) {
-          return (data['createdAt'] as Timestamp).toDate();
+        if (profile['createdAt'] != null) {
+          return (profile['createdAt'] as Timestamp).toDate();
         }
       }
-      // Default to beginning of current year if no date found
       return DateTime(DateTime.now().year, 1, 1);
     } catch (e) {
       print('Error getting user join date: $e');
@@ -604,17 +570,14 @@ class FirestoreService {
   /// Get user's annual leave entitlement
   Future<int?> getUserAnnualLeave(String userId) async {
     try {
-      final querySnapshot = await _firestore
-          .collection('users')
-          .where('userId', isEqualTo: userId)
-          .limit(1)
-          .get();
+      final organizationId = await getCurrentUserOrganizationId();
+      if (organizationId == null) return null;
 
-      if (querySnapshot.docs.isNotEmpty) {
-        final data = querySnapshot.docs.first.data();
-        return data['yearlyVacations'] as int?;
-      }
-      return null;
+      final profile = await _hierarchical.getUserProfile(
+        organizationId,
+        userId,
+      );
+      return profile?['yearlyVacations'] as int?;
     } catch (e) {
       print('Error getting user annual leave: $e');
       return null;

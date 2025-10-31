@@ -28,24 +28,29 @@ class OrganizationService {
     String createdBy,
   ) async {
     try {
-      await _firestore.collection('projects').add({
-        'organizationId': organizationId,
-        'projectName': 'Default internal project',
-        'projectType': 'Internal',
-        'billableToClient': false,
-        'clientName': null,
-        'clientEmail': null,
-        'clientPhone': null,
-        'description': 'default internal project',
-        'paymentType': null,
-        'lumpSumAmount': null,
-        'monthlyRate': null,
-        'hourlyRate': null,
-        'location': '',
-        'createdBy': createdBy,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      // Use hierarchical path: organizations/{orgId}/projects
+      await _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('projects')
+          .add({
+            'projectName': 'Default internal project',
+            'projectType': 'Internal',
+            'billableToClient': false,
+            'clientName': null,
+            'clientEmail': null,
+            'clientPhone': null,
+            'description': 'default internal project',
+            'paymentType': null,
+            'lumpSumAmount': null,
+            'monthlyRate': null,
+            'hourlyRate': null,
+            'location': '',
+            'organizationId': organizationId,
+            'createdBy': createdBy,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       print('Error creating default project: $e');
       rethrow;
@@ -85,18 +90,12 @@ class OrganizationService {
     }
   }
 
-  /// Get user's organization ID
+  /// Get user's organization ID from lightweight lookup doc
   Future<String?> getUserOrganizationId(String userId) async {
     try {
-      final querySnapshot = await _firestore
-          .collection('users')
-          .where('userId', isEqualTo: userId)
-          .limit(1)
-          .get();
-
-      if (querySnapshot.docs.isEmpty) return null;
-
-      return querySnapshot.docs.first.data()['organizationId'] as String?;
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (!doc.exists) return null;
+      return doc.data()?['organizationId'] as String?;
     } catch (e) {
       print('Error getting user organization: $e');
       rethrow;

@@ -117,7 +117,11 @@ class _LocationsPageState extends State<LocationsPage> {
 
     if (confirmed == true && location.id != null) {
       try {
-        await _locationService.deleteWorkLocation(location.id!);
+        if (_organizationId == null) return;
+        await _locationService.deleteWorkLocation(
+          _organizationId!,
+          location.id!,
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

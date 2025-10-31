@@ -16,6 +16,7 @@ import 'pages/schedule_page.dart';
 import 'settings/settings_controller.dart';
 import 'widgets/shift_calendar_widget.dart';
 import 'widgets/home/home_welcome_header.dart';
+import 'widgets/time_tracking_widget.dart';
 import 'models/leave_request.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
@@ -338,7 +339,11 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
         createdAt: DateTime.now(),
       );
 
-      await _leaveService.submitUserLeaveRequest(userId, request);
+      await _leaveService.submitUserLeaveRequest(
+        organizationId,
+        userId,
+        request,
+      );
 
       if (dialogContext.mounted) {
         Navigator.pop(dialogContext);
@@ -393,6 +398,11 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
             const SizedBox(height: 20),
             const SizedBox(height: 20),
             HomeWelcomeHeader(userName: _userName),
+            const SizedBox(height: 20),
+
+            // Time Tracking Widget (placed just below the welcome text)
+            const TimeTrackingWidget(),
+
             const SizedBox(height: 20),
 
             // Shift Calendar Widget
