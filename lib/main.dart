@@ -15,7 +15,6 @@ import 'pages/requests_page.dart';
 import 'pages/schedule_page.dart';
 import 'settings/settings_controller.dart';
 import 'widgets/shift_calendar_widget.dart';
-import 'widgets/home/home_welcome_header.dart';
 import 'widgets/time_tracking_widget.dart';
 import 'models/leave_request.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -154,7 +153,7 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     DropdownButtonFormField<LeaveType>(
-                      value: selectedLeaveType,
+                      initialValue: selectedLeaveType,
                       decoration: InputDecoration(
                         labelText: 'Type of Leave *',
                         border: OutlineInputBorder(
@@ -376,31 +375,15 @@ class _MayoraHomePageState extends State<MayoraHomePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Row(
-          children: [
-            Image.asset(
-              'assets/images/mayora_logo.png',
-              height: 32,
-              width: 32,
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(Icons.flutter_dash, size: 32);
-              },
-            ),
-            const SizedBox(width: 8),
-            Text(widget.title),
-          ],
-        ),
+        title: Text(widget.title),
       ),
       drawer: _buildDrawer(context),
       body: SingleChildScrollView(
         child: Column(
           children: <Widget>[
             const SizedBox(height: 20),
-            const SizedBox(height: 20),
-            HomeWelcomeHeader(userName: _userName),
-            const SizedBox(height: 20),
 
-            // Time Tracking Widget (placed just below the welcome text)
+            // Time Tracking Widget
             const TimeTrackingWidget(),
 
             const SizedBox(height: 20),

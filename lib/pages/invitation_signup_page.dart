@@ -193,7 +193,8 @@ class _InvitationSignUpPageState extends State<InvitationSignUpPage> {
       // Step 2: Prepare additional user data
       final additionalData = {
         'userId': userId, // Include userId for hierarchical structure
-        'organizationId': _invitationData!['organizationId'], // Include organizationId
+        'organizationId':
+            _invitationData!['organizationId'], // Include organizationId
         'address': _addressController.text.trim(),
         'phone': _phoneController.text.trim(),
         'dateOfBirth': _dateOfBirth.toIso8601String().split('T')[0],

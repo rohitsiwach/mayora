@@ -42,6 +42,12 @@ class TimeTrackingController extends ChangeNotifier {
   final Map<String, int> projectDurationsMs = {}; // projectId -> durationMs
   final Map<String, String> projectNames = {}; // projectId -> name cache
 
+  // Location tracking
+  Map<String, dynamic>? clockInLocation;
+  Map<String, dynamic>? clockOutLocation;
+  final List<Map<String, dynamic>> breakLocations = [];
+  final List<Map<String, dynamic>> projectSwitchLocations = [];
+
   DateTime? lastActivity;
   String?
   _sessionId; // Unique ID for current shift session to prevent stale resurrection
@@ -114,6 +120,10 @@ class TimeTrackingController extends ChangeNotifier {
       'activeProjectName': activeProjectName,
       'projectDurationsMs': projectDurationsMs,
       'projectNames': projectNames,
+      'clockInLocation': clockInLocation,
+      'clockOutLocation': clockOutLocation,
+      'breakLocations': breakLocations,
+      'projectSwitchLocations': projectSwitchLocations,
       'lastActivity': DateTime.now().toIso8601String(),
     };
     await prefs.setString(_prefsKey, jsonEncode(map));
@@ -180,6 +190,20 @@ class TimeTrackingController extends ChangeNotifier {
     if (pn != null) {
       projectNames.clear();
       pn.forEach((k, v) => projectNames[k] = v as String);
+    }
+
+    // Restore location data
+    clockInLocation = data['clockInLocation'] as Map<String, dynamic>?;
+    clockOutLocation = data['clockOutLocation'] as Map<String, dynamic>?;
+    final bl = data['breakLocations'] as List<dynamic>?;
+    if (bl != null) {
+      breakLocations.clear();
+      breakLocations.addAll(bl.cast<Map<String, dynamic>>());
+    }
+    final psl = data['projectSwitchLocations'] as List<dynamic>?;
+    if (psl != null) {
+      projectSwitchLocations.clear();
+      projectSwitchLocations.addAll(psl.cast<Map<String, dynamic>>());
     }
 
     final la = data['lastActivity'] as String?;
@@ -256,6 +280,8 @@ class TimeTrackingController extends ChangeNotifier {
   Future<void> clockIn({
     required String projectId,
     required String projectName,
+    double? latitude,
+    double? longitude,
   }) async {
     if (userId == null) throw Exception('Not authenticated');
     orgId ??= await _hier.getCurrentUserOrganizationId();
@@ -278,6 +304,18 @@ class TimeTrackingController extends ChangeNotifier {
     // Initialize the starting project with 0 duration so it appears in the map immediately
     projectDurationsMs[projectId] = 0;
 
+    // Store clock-in location
+    if (latitude != null && longitude != null) {
+      clockInLocation = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+        'action': 'clockIn',
+      };
+    }
+    breakLocations.clear();
+    projectSwitchLocations.clear();
+
     _startTickerIfNeeded();
     await _persistState();
     notifyListeners();
@@ -286,72 +324,105 @@ class TimeTrackingController extends ChangeNotifier {
   Future<void> switchProject({
     required String projectId,
     required String projectName,
+    double? latitude,
+    double? longitude,
   }) async {
     if (!isClockedIn) return;
-    // Finalize current running segment to ensure attribution even if ticker is throttled
-    if (!isOnBreak &&
-        activeProjectId != null &&
-        currentWorkSegmentStartTime != null) {
-      final now = DateTime.now();
-      final delta = now.difference(currentWorkSegmentStartTime!);
-      if (!delta.isNegative && delta.inMilliseconds > 0) {
-        _addToActiveProject(delta);
-      }
-    }
+    // The ticker already handles incremental time tracking every second,
+    // so we don't need to manually add delta here (that would double-count).
+    // Just switch to the new project and let the ticker continue.
     activeProjectId = projectId;
     activeProjectName = projectName;
     projectNames[projectId] = projectName;
     // Initialize the new project in the map if not already present
     projectDurationsMs[projectId] ??= 0;
     currentWorkSegmentStartTime = DateTime.now();
+
+    // Store project switch location
+    if (latitude != null && longitude != null) {
+      projectSwitchLocations.add({
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+        'action': 'switchProject',
+        'projectId': projectId,
+        'projectName': projectName,
+      });
+    }
+
     await _persistState();
     notifyListeners();
   }
 
-  Future<void> startBreak() async {
+  Future<void> startBreak({double? latitude, double? longitude}) async {
     if (!isClockedIn || isOnBreak) return;
-    // Finalize current running work segment before switching to break
-    if (activeProjectId != null && currentWorkSegmentStartTime != null) {
-      final now = DateTime.now();
-      final delta = now.difference(currentWorkSegmentStartTime!);
-      if (!delta.isNegative && delta.inMilliseconds > 0) {
-        _addToActiveProject(delta);
-      }
-    }
+    // The ticker already handles incremental time tracking every second,
+    // so we don't need to manually add delta here (that would double-count).
+    // Just switch to break state and let the ticker continue.
     isOnBreak = true;
     currentBreakStartTime = DateTime.now();
     currentWorkSegmentStartTime = null;
+
+    // Store break start location
+    if (latitude != null && longitude != null) {
+      breakLocations.add({
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+        'action': 'startBreak',
+      });
+    }
+
     await _persistState();
     notifyListeners();
   }
 
-  Future<void> resumeFromBreak() async {
+  Future<void> resumeFromBreak({double? latitude, double? longitude}) async {
     if (!isClockedIn || !isOnBreak) return;
     isOnBreak = false;
     currentBreakStartTime = null;
     currentWorkSegmentStartTime = DateTime.now();
+
+    // Store break resume location
+    if (latitude != null && longitude != null) {
+      breakLocations.add({
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+        'action': 'resumeFromBreak',
+      });
+    }
+
     await _persistState();
     notifyListeners();
   }
 
-  Future<void> endShift({bool autoEnded = false}) async {
+  Future<void> endShift({
+    bool autoEnded = false,
+    double? latitude,
+    double? longitude,
+  }) async {
     if (!isClockedIn) return;
     isClockedIn = false;
     clockOutTime = DateTime.now();
+
+    // Store clock-out location
+    if (latitude != null && longitude != null) {
+      clockOutLocation = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+        'action': 'clockOut',
+      };
+    }
 
     // Persist an 'ended' state immediately so a quick refresh won't revive
     // a running shift from stale local storage.
     await _persistState();
 
-    // Finalize any running project segment to capture time since last tick
-    if (!isOnBreak &&
-        activeProjectId != null &&
-        currentWorkSegmentStartTime != null) {
-      final delta = clockOutTime!.difference(currentWorkSegmentStartTime!);
-      if (!delta.isNegative && delta.inMilliseconds > 0) {
-        _addToActiveProject(delta);
-      }
-    }
+    // The ticker already handles incremental time tracking every second,
+    // so we don't need to manually add delta here (ticker stops after this).
+    // We may lose up to 1 second of precision, but that's acceptable.
 
     final totalAtWork = _currentTotalAtWork();
     final totalBreak = accumulatedBreak;
@@ -406,6 +477,12 @@ class TimeTrackingController extends ChangeNotifier {
         projectBreakdown: breakdown,
         shiftAdjustmentsMade: adjusted,
         isAutoEnded: autoEnded,
+        clockInLocation: clockInLocation,
+        clockOutLocation: clockOutLocation,
+        breakLocations: breakLocations.isEmpty ? null : breakLocations,
+        projectSwitchLocations: projectSwitchLocations.isEmpty
+            ? null
+            : projectSwitchLocations,
       );
 
       final ref = _hier.userDoc(orgId!, userId!).collection('shifts');
@@ -426,6 +503,10 @@ class TimeTrackingController extends ChangeNotifier {
   Map<String, dynamic>? previewShiftRecord({DateTime? at}) {
     if (!isClockedIn || shiftStartTime == null) return null;
     final now = at ?? DateTime.now();
+
+    print('[previewShiftRecord] projectDurationsMs: $projectDurationsMs');
+    print('[previewShiftRecord] projectNames: $projectNames');
+    print('[previewShiftRecord] activeProjectId: $activeProjectId');
 
     // Compute totals as of 'now'
     final totalAtWork = now.difference(shiftStartTime!);
@@ -451,6 +532,7 @@ class TimeTrackingController extends ChangeNotifier {
 
     // Project breakdown snapshot including current running segment (without mutating state)
     final pdSnapshot = projectDurationsSnapshot(at: now);
+    print('[previewShiftRecord] pdSnapshot: $pdSnapshot');
     final breakdown =
         pdSnapshot.entries
             .map(
@@ -462,6 +544,12 @@ class TimeTrackingController extends ChangeNotifier {
             )
             .toList()
           ..sort((a, b) => b.durationMs.compareTo(a.durationMs));
+    print('[previewShiftRecord] breakdown length: ${breakdown.length}');
+    for (final entry in breakdown) {
+      print(
+        '[previewShiftRecord] - ${entry.projectName} (${entry.projectId}): ${entry.durationMs}ms',
+      );
+    }
 
     final map = buildShiftRecordMap(
       orgId: orgId ?? '',
@@ -474,6 +562,12 @@ class TimeTrackingController extends ChangeNotifier {
       projectBreakdown: breakdown,
       shiftAdjustmentsMade: adjusted,
       isAutoEnded: false,
+      clockInLocation: clockInLocation,
+      clockOutLocation: clockOutLocation,
+      breakLocations: breakLocations.isEmpty ? null : breakLocations,
+      projectSwitchLocations: projectSwitchLocations.isEmpty
+          ? null
+          : projectSwitchLocations,
     );
 
     return map;
@@ -484,10 +578,10 @@ class TimeTrackingController extends ChangeNotifier {
   /// double-counting here.
   Map<String, int> projectDurationsSnapshot({DateTime? at}) {
     final copy = Map<String, int>.from(projectDurationsMs);
-    // Clamp values to be safe
+    // Clamp values to be safe - use explicit large number instead of bit shift for web compatibility
     for (final k in copy.keys.toList()) {
       final v = copy[k] ?? 0;
-      copy[k] = v.clamp(0, 1 << 62);
+      copy[k] = v.clamp(0, 9000000000000); // ~285 years in ms
     }
     return copy;
   }
@@ -535,6 +629,10 @@ class TimeTrackingController extends ChangeNotifier {
     activeProjectName = null;
     projectDurationsMs.clear();
     projectNames.clear();
+    clockInLocation = null;
+    clockOutLocation = null;
+    breakLocations.clear();
+    projectSwitchLocations.clear();
     _sessionId = null; // Clear session ID to prevent any resurrection
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefsKey);
@@ -551,6 +649,12 @@ class TimeTrackingController extends ChangeNotifier {
       : Duration(
           milliseconds: totalAtWork.inMilliseconds - totalBreak.inMilliseconds,
         );
+
+  // Get current active project duration in milliseconds
+  int get activeProjectDurationMs {
+    if (activeProjectId == null) return 0;
+    return projectDurationsMs[activeProjectId] ?? 0;
+  }
 
   static String formatHms(Duration d) {
     final h = d.inHours.toString().padLeft(2, '0');

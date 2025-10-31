@@ -96,10 +96,14 @@ Map<String, dynamic> buildShiftRecordMap({
   required List<ProjectTimeEntry> projectBreakdown,
   required bool shiftAdjustmentsMade,
   required bool isAutoEnded,
+  Map<String, dynamic>? clockInLocation,
+  Map<String, dynamic>? clockOutLocation,
+  List<Map<String, dynamic>>? breakLocations,
+  List<Map<String, dynamic>>? projectSwitchLocations,
 }) {
   final date = yyyymmdd(clockInTime.toLocal());
   final week = _isoWeekNumber(clockInTime.toLocal());
-  return {
+  final map = {
     'orgId': orgId,
     'userId': userId,
     'clockInTime': clockInTime.toUtc().toIso8601String(),
@@ -115,4 +119,20 @@ Map<String, dynamic> buildShiftRecordMap({
     'monthOfYear': clockInTime.month,
     'year': clockInTime.year,
   };
+
+  // Add location data if available
+  if (clockInLocation != null) {
+    map['clockInLocation'] = clockInLocation;
+  }
+  if (clockOutLocation != null) {
+    map['clockOutLocation'] = clockOutLocation;
+  }
+  if (breakLocations != null && breakLocations.isNotEmpty) {
+    map['breakLocations'] = breakLocations;
+  }
+  if (projectSwitchLocations != null && projectSwitchLocations.isNotEmpty) {
+    map['projectSwitchLocations'] = projectSwitchLocations;
+  }
+
+  return map;
 }

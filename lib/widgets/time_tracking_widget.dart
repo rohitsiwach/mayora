@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../services/time_tracking_service.dart';
 import '../services/firestore_service.dart';
+import '../services/location_validation_service.dart';
 
 class TimeTrackingWidget extends StatefulWidget {
   const TimeTrackingWidget({super.key});
@@ -16,6 +17,8 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
     with WidgetsBindingObserver {
   final TimeTrackingController _controller = TimeTrackingController();
   final FirestoreService _fs = FirestoreService();
+  final LocationValidationService _locationService =
+      LocationValidationService();
 
   String? _selectedProjectId;
   String? _selectedProjectName;
@@ -75,9 +78,27 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
             onPressed: (_selectedProjectId == null)
                 ? null
                 : () async {
+                    final location = await _validateAndGetLocation('clockIn');
+                    // If location validation failed and was required, location will be null
+                    // and error dialog already shown
+                    if (_controller.orgId != null) {
+                      // Check if location was required but failed
+                      final settings = await _locationService
+                          .locationSettingsService
+                          .getLocationSettings(_controller.orgId!);
+                      if (settings['requireLocationForPunch'] == true &&
+                          settings['locationTrackingEnabled'] == true &&
+                          location == null) {
+                        // Location was required but not obtained, don't proceed
+                        return;
+                      }
+                    }
+
                     await _controller.clockIn(
                       projectId: _selectedProjectId!,
                       projectName: _selectedProjectName ?? 'Project',
+                      latitude: location?['latitude'],
+                      longitude: location?['longitude'],
                     );
                   },
             style: ElevatedButton.styleFrom(
@@ -89,6 +110,7 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
           ),
           const SizedBox(height: 16),
           _metricsRow(),
+          _locationRequirementNote(),
         ],
       ),
     );
@@ -118,7 +140,15 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () => _controller.startBreak(),
+                  onPressed: () async {
+                    final location = await _validateAndGetLocation(
+                      'startBreak',
+                    );
+                    await _controller.startBreak(
+                      latitude: location?['latitude'],
+                      longitude: location?['longitude'],
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     backgroundColor: const Color(0xFF5E5CE6),
@@ -141,6 +171,7 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
               ),
             ],
           ),
+          _locationRequirementNote(),
         ],
       ),
     );
@@ -170,7 +201,15 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () => _controller.resumeFromBreak(),
+                  onPressed: () async {
+                    final location = await _validateAndGetLocation(
+                      'resumeFromBreak',
+                    );
+                    await _controller.resumeFromBreak(
+                      latitude: location?['latitude'],
+                      longitude: location?['longitude'],
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     backgroundColor: const Color(0xFF00C853),
@@ -193,6 +232,7 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
               ),
             ],
           ),
+          _locationRequirementNote(),
         ],
       ),
     );
@@ -220,13 +260,13 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             DropdownButtonFormField<String>(
-              value: _controller.isClockedIn
+              initialValue: _controller.isClockedIn
                   ? _controller.activeProjectId
                   : _selectedProjectId,
               items: items,
               onChanged: !enabled
                   ? null
-                  : (val) {
+                  : (val) async {
                       if (_controller.isClockedIn) {
                         final name =
                             items.firstWhere((e) => e.value == val).child
@@ -236,9 +276,14 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
                                       .data ??
                                   'Project')
                             : 'Project';
-                        _controller.switchProject(
+                        final location = await _validateAndGetLocation(
+                          'switchProject',
+                        );
+                        await _controller.switchProject(
                           projectId: val!,
                           projectName: name,
+                          latitude: location?['latitude'],
+                          longitude: location?['longitude'],
                         );
                       } else {
                         setState(() {
@@ -272,18 +317,24 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
     final totalAtWork = TimeTrackingController.formatHms(
       _controller.totalAtWork,
     );
-    final actualWorking = TimeTrackingController.formatHms(
-      _controller.actualWorking,
-    );
     final totalBreak = TimeTrackingController.formatHms(_controller.totalBreak);
+
+    // Get current project time directly from the controller
+    final currentProjectTime = TimeTrackingController.formatHms(
+      Duration(milliseconds: _controller.activeProjectDurationMs),
+    );
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _metricCircle(title: 'TOTAL AT WORK', value: totalAtWork),
         _metricCircle(
-          title: onBreak ? 'ON BREAK' : 'ACTUAL WORKING TIME',
-          value: actualWorking,
+          title: 'TOTAL AT WORK',
+          value: totalAtWork,
+          highlight: !onBreak,
+        ),
+        _metricCircle(
+          title: _controller.activeProjectName ?? 'PROJECT',
+          value: currentProjectTime,
           highlight: !onBreak,
         ),
         _metricCircle(title: 'TOTAL BREAK', value: totalBreak),
@@ -340,15 +391,15 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
   }
 
   Widget _projectBreakdownList() {
-    final snapshot = _controller.projectDurationsSnapshot();
-    print('[Widget] _projectBreakdownList called, snapshot: $snapshot');
-    if (snapshot.isEmpty) {
+    // Use the live projectDurationsMs map instead of a snapshot
+    final durations = _controller.projectDurationsMs;
+    if (durations.isEmpty) {
       return Text(
         'No project time yet',
         style: TextStyle(color: Colors.grey[600]),
       );
     }
-    final entries = snapshot.entries.toList()
+    final entries = durations.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,10 +408,7 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Text(
-              '${_controller.projectNames[e.key] ?? e.key}: ' +
-                  TimeTrackingController.formatHms(
-                    Duration(milliseconds: e.value),
-                  ),
+              '${_controller.projectNames[e.key] ?? e.key}: ${TimeTrackingController.formatHms(Duration(milliseconds: e.value))}',
             ),
           ),
       ],
@@ -376,6 +424,30 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
     );
   }
 
+  /// Display location requirement note (always shown as a disclaimer)
+  Widget _locationRequirementNote() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 16, color: Colors.grey[600]),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'location enable might be required according to your organisation requirement',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showEndShiftConfirmation() async {
     // Build a preview snapshot
     final preview = _controller.previewShiftRecord();
@@ -383,6 +455,8 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
       // Fallback: if not clocked in
       return;
     }
+
+    print('[Widget] preview data: $preview');
 
     String fmtMs(int ms) =>
         TimeTrackingController.formatHms(Duration(milliseconds: ms));
@@ -400,6 +474,8 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
         (preview['projectBreakdown'] as List?)?.cast<Map<String, dynamic>>() ??
         const [];
 
+    print('[Widget] breakdown from preview: $breakdown');
+
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -414,9 +490,9 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
                 if (clockIn != null) Text('Clock In:  ${df.format(clockIn)}'),
                 if (clockOut != null) Text('Clock Out: ${df.format(clockOut)}'),
                 const SizedBox(height: 8),
-                Text('Total at work:     ${fmtMs(totalMs)}'),
-                Text('Total break:       ${fmtMs(breakMs)}'),
-                Text('Actual working:    ${fmtMs(actualMs)}'),
+                Text('Total at work:  ${fmtMs(totalMs)}'),
+                Text('Total break:    ${fmtMs(breakMs)}'),
+                Text('Actual working: ${fmtMs(actualMs)}'),
                 if (adjusted)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -472,7 +548,11 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
             ElevatedButton(
               onPressed: () async {
                 Navigator.of(context).pop();
-                await _controller.endShift();
+                final location = await _validateAndGetLocation('endShift');
+                await _controller.endShift(
+                  latitude: location?['latitude'],
+                  longitude: location?['longitude'],
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF5E57),
@@ -484,5 +564,71 @@ class _TimeTrackingWidgetState extends State<TimeTrackingWidget>
         );
       },
     );
+  }
+
+  /// Validate location for time tracking action
+  /// Returns Map with 'latitude' and 'longitude' if valid, or shows error dialog and returns null
+  Future<Map<String, double>?> _validateAndGetLocation(String action) async {
+    if (_controller.orgId == null) return null;
+
+    // Validate location requirements
+    final validation = await _locationService.validateLocationForAction(
+      organizationId: _controller.orgId!,
+    );
+
+    // If validation is null, location is not required
+    if (validation == null) {
+      // Try to get location anyway for tracking purposes (optional)
+      final position = await _locationService.getCurrentPosition();
+      if (position != null) {
+        return {'latitude': position.latitude, 'longitude': position.longitude};
+      }
+      return null;
+    }
+
+    // If validation failed, show error and prevent action
+    if (!validation.isValid) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Location Required'),
+            content: Text(validation.reason),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return null;
+    }
+
+    // Location is valid, get current position
+    final position = await _locationService.getCurrentPosition();
+    if (position == null) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Location Error'),
+            content: const Text(
+              'Unable to get your current location. Please check your location settings.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return null;
+    }
+
+    return {'latitude': position.latitude, 'longitude': position.longitude};
   }
 }
